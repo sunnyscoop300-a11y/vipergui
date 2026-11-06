@@ -1,0 +1,29 @@
+Mastodons sprites
+=================
+
+Nemmest: ét sprite-ark
+----------------------
+Læg en PNG ved navn  mastodon.png  her, med op til fire billeder side om
+side på gennemsigtig baggrund, i denne rækkefølge:
+
+  1. idle   - lukket mund, kigger frem        (påkrævet)
+  2. talk   - samme, men åben mund             (skifter mens han snakker)
+  3. blink  - samme, øjnene lukket             (blinker hvert ~4. sekund)
+  4. think  - tænker, kigger op / snabel ved hagen (mens AI'en svarer)
+
+Appen finder selv billederne ved at kigge efter de gennemsigtige
+mellemrum, og skalerer dem ned til 300x300. Arket må gerne være stort
+(fx 2048x512 eller 3072x768 fra gpt-image).
+
+Vigtigt: Mastodon skal have præcis samme størrelse, vinkel og placering
+i alle fire billeder, ellers "hopper" han, når de skifter. Der skal være
+tydelig tom (gennemsigtig) plads mellem billederne.
+
+Alternativ: enkelte filer
+-------------------------
+idle.png, talk.png, blink.png, think.png - de vinder over arket, hvis
+begge findes. Kun idle er påkrævet.
+
+Personlighed
+------------
+persona.txt er hans personlighed (systemprompt). Ret den til, som du vil.

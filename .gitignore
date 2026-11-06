@@ -1,10 +1,10 @@
 # Built programs
-vipergui-demo
-flappy-crane
-flappy-hare
-demo-hare
-mastodon
-bines
+/vipergui-demo
+/flappy-crane
+/flappy-hare
+/demo-hare
+/mastodon
+/bines
 
 # Not source: downloads, packages, screenshots, games and secrets
 *.tar.gz
@@ -16,3 +16,4 @@ bines
 bines-lyd-demo.wav
 biness.txt
 wl-debug.txt
+/jade

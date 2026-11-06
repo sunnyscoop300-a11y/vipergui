@@ -1,0 +1,47 @@
+Bines - sprites
+===============
+
+Brikker
+-------
+pieces.png - de syv grundbrikker side om side på gennemsigtig baggrund,
+i denne rækkefølge (samme som konceptarket):
+
+  1. honningdråbe  2. blomst  3. blad  4. bær  5. krystal  6. voks  7. pollen
+
+Animationer (strips)
+--------------------
+Frames i KVADRATISKE celler side om side: cellebredde = billedets højde,
+så et strip på 9 frames med 256 px celler er 2304 x 256. Gennemsigtig
+baggrund. Løse dele (en honningkrukke, gnister, et "!") må gerne stå frit
+i cellen. Samme figurstørrelse og fødderne på samme linje i alle frames.
+
+Honningtyven - vendt mod HØJRE (spillet spejler ham selv):
+  thief_walk.png   går ind på hylden                  (påkrævet)
+  thief_flee.png   løber væk                          (valgfri, ellers walk)
+  thief_steal.png  putter honning i sækken            (valgfri)
+  thief_talk.png   taler, frame 1 er en rolig pose     (valgfri)
+  thief_idle.png   venter på hylden                   (valgfri)
+  thief_angry.png  bliver vred ved store combos       (valgfri)
+
+Dronning Evalin:
+  queen_talk.png   taler, frame 1 er en rolig pose     (valgfri)
+
+Boostere (Hive Shop og panelet):
+  scepter.png        9 frames; frame 5 er højdepunktet, hvor magien sker
+  booster_jar.png    3 frames: krukken, låget åbner, honningsprøjt
+  booster_comb.png   3 frames: bikagen, hvirvel, udbrud
+  booster_wand.png   3 frames: staven, glød, udbrud
+  (3-frame boostere: magien sker ved frame 3)
+
+Hive Shop:
+  evalin_shop.png    Evalin i butikken, 9 frames MED baggrund
+                     (300 px celler, vises som et kort)
+
+Mangler en fil, tegner spillet en simpel figur i stedet.
+
+Highscore og THE HONEY DROP CUP:
+  highscore_bg.png         baggrunden til highscore-tavlen, 820 x 660
+  evalin_cup_gold.png      Evalin fremtryller pokalen, 6 frames (300 px)
+  evalin_cup_silver.png      frame 1: uden pokal, frame 2: pokalen kommer,
+  evalin_cup_bronze.png      frame 3-6: hun viser den frem (gentages)
+  cup_gold/silver/bronze.png   små pokaler til tavlen (1 frame)
