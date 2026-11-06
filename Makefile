@@ -8,7 +8,7 @@ else
 FLAGS = -lSDL2
 endif
 
-all: vipergui-demo flappy-crane mastodon bines
+all: vipergui-demo flappy-crane mastodon bines jade
 
 vipergui-demo: viper/*.ha cmd/demo/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/demo/
@@ -21,6 +21,12 @@ mastodon: viper/*.ha cmd/mastodon/*.ha
 
 bines: viper/*.ha cmd/bines/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/bines/
+
+jade: viper/*.ha cmd/jade/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/jade/
+
+slange: jade
+	./jade
 
 play: bines
 	./bines
@@ -36,9 +42,11 @@ chat: mastodon
 
 test:
 	$(HARE) test -T +nosdl viper
+	$(HARE) test -T +nosdl cmd/bines
+	$(HARE) test -T +nosdl cmd/jade
 
 clean:
-	rm -f vipergui-demo flappy-crane mastodon bines
+	rm -f vipergui-demo flappy-crane mastodon bines jade
 
 # ---- Desktop integration (KDE/GNOME menu + icons), per user, no sudo ----
 APPS = $(HOME)/.local/share/applications
@@ -52,6 +60,7 @@ desktop: all
 		cp assets/logo/vipergui-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/vipergui.png; \
 		cp assets/crane/flappy-crane-$$s.png $(ICONS)/$${s}x$${s}/apps/flappy-crane.png; \
 		cp assets/bines/bines-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/bines.png; \
+		cp assets/jade/jade-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/jade.png; \
 	done
 	@mkdir -p $(ICONS)/scalable/apps
 	@cp assets/logo/vipergui-icon.svg $(ICONS)/scalable/apps/vipergui.svg
@@ -59,6 +68,7 @@ desktop: all
 	$(call entry,flappy-crane,Flappy Crane,Fly Crane through the bamboo,flappy-crane,Game;ArcadeGame;)
 	$(call entry,mastodon,Mastodon,Chat with Mastodon (OpenRouter),vipergui,Network;Chat;)
 	$(call entry,bines,Bines,Match Three - Make Magic!,bines,Game;LogicGame;)
+	$(call entry,jade,Jade,Den jadegrønne slange - 3D snake,jade,Game;ArcadeGame;)
 	@command -v update-desktop-database >/dev/null && update-desktop-database $(APPS) || true
 	@command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
 	@echo "Installed. Look for the apps in your menu."
@@ -72,10 +82,10 @@ define entry
 endef
 
 undesktop:
-	rm -f $(APPS)/vipergui-demo.desktop $(APPS)/flappy-crane.desktop $(APPS)/mastodon.desktop $(APPS)/bines.desktop
+	rm -f $(APPS)/vipergui-demo.desktop $(APPS)/flappy-crane.desktop $(APPS)/mastodon.desktop $(APPS)/bines.desktop $(APPS)/jade.desktop
 	for s in $(SIZES); do \
-		rm -f $(ICONS)/$${s}x$${s}/apps/vipergui.png $(ICONS)/$${s}x$${s}/apps/flappy-crane.png $(ICONS)/$${s}x$${s}/apps/bines.png; \
+		rm -f $(ICONS)/$${s}x$${s}/apps/vipergui.png $(ICONS)/$${s}x$${s}/apps/flappy-crane.png $(ICONS)/$${s}x$${s}/apps/bines.png $(ICONS)/$${s}x$${s}/apps/jade.png; \
 	done
 	rm -f $(ICONS)/scalable/apps/vipergui.svg
 
-.PHONY: all run flappy chat play test clean desktop undesktop
+.PHONY: all run flappy chat play slange test clean desktop undesktop

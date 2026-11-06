@@ -51,6 +51,30 @@ On Wayland you can skip SDL2 entirely: `make HARE_ONLY=1` builds static,
 
 `make test` runs the unit tests.
 
+## Jade — a 3D game on a 2D library
+
+`cmd/jade` is snake in a temple garden, in real 3D. ViperGui only gives
+a window and a pixel buffer, so Jade brings its own small software 3D
+renderer (`r3d.ha`, about 300 lines): a camera with perspective, triangles
+clipped against the near plane and filled with a z-buffer, one light,
+distance fog, and a few shapes (boxes, prisms, pyramids, faceted balls).
+`scene3d.ha` builds the garden from them every frame, about 1500
+triangles, and steers the cameras: behind the snake (default), from above
+(Q/E turn it), or the old isometric view drawn with plain 2D shapes.
+Press C to switch.
+
+## Mastodon chat
+
+Needs `curl` and an OpenRouter key:
+
+```sh
+export OPENROUTER_API_KEY=sk-or-...
+make chat
+```
+
+Optional: `MASTODON_MODEL` (default `google/gemini-4-argon`), `MASTODON_DIR`
+(sprites/persona folder). See `assets/mastodon/LÆS-MIG.txt` for sprites.
+
 ## API (0.2.0)
 
 | Area     | Functions |
@@ -79,6 +103,12 @@ viper/theme.ha     themes
 viper/widgets.ha   immediate-mode widgets
 cmd/demo/          widgets + "Viper vs. Dumplings" mini game   (make run)
 cmd/flappy/        Flappy Crane                               (make flappy)
+cmd/mastodon/      AI chat with Mastodon via OpenRouter       (make chat)
+cmd/bines/         Bines: honeycomb match-3 game, with Queen Evalin
+                   and her scepter booster                    (make play)
+cmd/jade/          Jade: snake in 3D in a temple garden, with
+                   its own software 3D renderer               (make slange)
+assets/mastodon/   sprites + persona for the chat
 assets/crane/      Crane sprite sheet for Flappy Crane
 assets/logo/       logo + icon (SVG and PNG 16-512 px)
 ```
