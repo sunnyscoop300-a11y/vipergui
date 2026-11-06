@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- ViperGui icon: a snake coiled around an app window. -->
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c3048"/>
+      <stop offset="1" stop-color="#0f1a2e"/>
+    </linearGradient>
+    <linearGradient id="scales" gradientUnits="userSpaceOnUse" x1="70" y1="120" x2="430" y2="460">
+      <stop offset="0" stop-color="#a8f26c"/>
+      <stop offset="0.45" stop-color="#3ddc97"/>
+      <stop offset="1" stop-color="#14a08a"/>
+    </linearGradient>
+    <linearGradient id="headg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7cec7a"/>
+      <stop offset="1" stop-color="#2cc88c"/>
+    </linearGradient>
+  </defs>
+
+  <g id="art" transform="translate(-16 -22)">
+  <!-- Window -->
+  <rect x="146" y="96" width="320" height="252" rx="34" fill="#6aecb8"/>
+  <rect x="158" y="108" width="296" height="228" rx="24" fill="url(#screen)"/>
+  <rect x="196" y="146" width="242" height="6" rx="3" fill="#3f6672"/>
+  <circle cx="404" cy="128" r="6" fill="#3ddc97"/>
+  <circle cx="424" cy="128" r="6" fill="#6b8ea6"/>
+  <rect x="210" y="178" width="96" height="15" rx="7.5" fill="#3cc9a6"/>
+  <rect x="210" y="208" width="152" height="12" rx="6" fill="#6b8ea6"/>
+  <rect x="210" y="232" width="116" height="12" rx="6" fill="#6b8ea6"/>
+  <rect x="210" y="264" width="86" height="34" rx="9" fill="#3ddc97"/>
+  <polyline points="244,273 256,281 244,289" fill="none" stroke="#0b2f2f" stroke-width="5.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Lower coil: comes out from behind the window, loops underneath and
+       ends with the tail tip in front of the window's corner. -->
+  <path id="coil" d="M 128 292 C 96 336 104 410 204 432 C 298 452 392 448 418 408
+           C 438 376 404 350 372 334" fill="none"/>
+  <use href="#coil" stroke="#0b3d3d" stroke-width="52" stroke-linecap="round"/>
+  <use href="#coil" stroke="url(#scales)" stroke-width="38" stroke-linecap="round"/>
+  <path d="M 404 398 C 416 382 398 364 380 352" fill="none" stroke="#c4f7a6"
+        stroke-width="7" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- Neck: from the head down the left side, bending behind the window. -->
+  <path id="neck" d="M 150 150 C 92 178 82 262 160 304" fill="none"/>
+  <use href="#neck" stroke="#0b3d3d" stroke-width="52" stroke-linecap="round"/>
+  <use href="#neck" stroke="url(#scales)" stroke-width="38" stroke-linecap="round"/>
+  <path d="M 112 196 C 104 222 108 248 124 266" fill="none" stroke="#c4f7a6"
+        stroke-width="7" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Head -->
+  <g transform="rotate(-8 186 132)">
+    <ellipse cx="186" cy="132" rx="62" ry="44" fill="#0b3d3d"/>
+    <ellipse cx="186" cy="132" rx="55" ry="37" fill="url(#headg)"/>
+    <path d="M 160 156 Q 200 168 236 142 Q 222 168 186 170 Q 168 168 160 156 Z" fill="#d9ffb3"/>
+    <ellipse cx="176" cy="122" rx="9" ry="12" fill="#0b3d3d"/>
+    <circle cx="173" cy="117" r="3.5" fill="#ffffff"/>
+    <circle cx="222" cy="126" r="3" fill="#0b3d3d"/>
+  </g>
+  <!-- Tongue -->
+  <path d="M 238 140 L 254 146 M 254 146 L 264 140 M 254 146 L 258 158" fill="none"
+        stroke="#ff7a9c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
