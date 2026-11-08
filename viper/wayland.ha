@@ -21,6 +21,11 @@ use encoding::utf8;
 
 def NBUF: size = 2;
 
+// The title bar ViperGui draws itself when the compositor won't (WSLg,
+// GNOME): its height, and the close button's width at its right end.
+def TB: int = 28;
+def TB_CLOSE: int = 44;
+
 // Internal to ViperGui.
 export type wl_backend = struct {
 	sock: net::socket,
@@ -84,6 +89,16 @@ export type wl_backend = struct {
 	repeat_rate: u32,
 	repeat_delay: u32,
 	debug: bool, // VIPER_WLDEBUG=1 logs protocol traffic to stderr
+
+	// Our own title bar (client-side decoration): tb is its height (0 when
+	// the compositor draws one), bar its pixels, title its text.
+	tb: int,
+	bar: []u32,
+	bar_hot: int,      // the close button under the pointer: 1, else 0
+	bar_drawn: int,    // what bar shows: -1 = not drawn yet
+	title: str,
+	on_bar: bool,      // the pointer is over the title bar
+	bar_x: int,
 };
 
 // ---- Opening and closing ----
@@ -110,8 +125,10 @@ fn wl_open(title: str, width: int, height: int) (*wl_backend | error | nomem) = 
 		repeat_rate = 25,
 		repeat_delay = 600,
 		debug = os::getenv("VIPER_WLDEBUG") is str,
+		bar_drawn = -1,
 		...
 	})?;
+	be.title = strings::dup(title)?;
 
 	match (wl_setup(be, title)) {
 	case void =>
@@ -172,15 +189,12 @@ fn wl_setup(be: *wl_backend, title: str) (void | error) = {
 	m = begin(be, be.toplevel, 3);
 	put_str(be, app_id());
 	end(be, m);
-	// Fixed size: set_min_size and set_max_size to the same value.
-	for (let op = 7u16; op <= 8; op += 1) {
-		m = begin(be, be.toplevel, op);
-		put_u32(be, be.width: u32);
-		put_u32(be, be.height: u32);
-		end(be, m);
-	};
+	// No decoration manager (WSLg, GNOME): no title bar from the
+	// compositor, so we draw our own. VIPER_CSD=1 forces it.
+	if (be.deco_mgr == 0 || os::getenv("VIPER_CSD") is str) be.tb = TB;
+	size_hints(be);
 	// Ask for a title bar drawn by the compositor (KDE supports this).
-	if (be.deco_mgr != 0) {
+	if (be.deco_mgr != 0 && be.tb == 0) {
 		be.decoration = newid(be);
 		m = begin(be, be.deco_mgr, 1);
 		put_u32(be, be.decoration);
@@ -194,11 +208,30 @@ fn wl_setup(be: *wl_backend, title: str) (void | error) = {
 	m = begin(be, be.surface, 6);
 	end(be, m);
 
-	create_buffers(be)?;
 	for (let i = 0; i < 20 && !be.configured; i += 1) {
 		roundtrip(be)?;
 	};
 	if (!be.configured) return "compositor never configured the window": error;
+	// The compositor may have said it won't draw the title bar after all.
+	if (be.tb > 0) {
+		size_hints(be);
+		be.bar = match (alloc([0u32...], (be.width * be.tb): size)) {
+		case let b: []u32 => yield b;
+		case nomem => return "out of memory": error;
+		};
+	};
+	create_buffers(be)?;
+};
+
+// Fixed size: set_min_size and set_max_size to the same value (with our
+// own title bar, if any).
+fn size_hints(be: *wl_backend) void = {
+	for (let op = 7u16; op <= 8; op += 1) {
+		const m = begin(be, be.toplevel, op);
+		put_u32(be, be.width: u32);
+		put_u32(be, (be.height + be.tb): u32);
+		end(be, m);
+	};
 };
 
 // The app id tells the compositor which .desktop file (and so which icon
@@ -221,6 +254,8 @@ fn wl_close(be: *wl_backend) void = {
 	case null => void;
 	};
 	match (net::close(be.sock)) { case => void; };
+	free(be.bar);
+	free(be.title);
 	free(be);
 };
 
@@ -246,7 +281,7 @@ fn bind(be: *wl_backend, g: (u32, u32), iface: str, maxver: u32) u32 = {
 // Two XRGB8888 buffers in one shared-memory pool.
 fn create_buffers(be: *wl_backend) (void | error) = {
 	const stride = be.width: size * 4;
-	const bufsize = stride * be.height: size;
+	const bufsize = stride * (be.height + be.tb): size;
 	be.mapsize = bufsize * NBUF;
 
 	const fd = match (rt::memfd_create("viper-framebuffer", rt::MFD_CLOEXEC)) {
@@ -281,7 +316,7 @@ fn create_buffers(be: *wl_backend) (void | error) = {
 		put_u32(be, be.buffers[i]);
 		put_u32(be, (i * bufsize): u32);
 		put_u32(be, be.width: u32);
-		put_u32(be, be.height: u32);
+		put_u32(be, (be.height + be.tb): u32);
 		put_u32(be, stride: u32);
 		put_u32(be, 1); // WL_SHM_FORMAT_XRGB8888
 		end(be, m);
@@ -329,7 +364,13 @@ fn wl_present(win: *window, be: *wl_backend) void = {
 	case null => return;
 	};
 	const n = len(win.pixels);
-	map[idx * n..idx * n + n] = win.pixels;
+	const nb = len(be.bar);
+	const at = idx * (n + nb);
+	if (nb > 0) {
+		if (be.bar_drawn != be.bar_hot) draw_bar(win, be);
+		map[at..at + nb] = be.bar;
+	};
+	map[at + nb..at + nb + n] = win.pixels;
 	be.busy[idx] = true;
 
 	let m = begin(be, be.surface, 1); // attach(buffer, 0, 0)
@@ -341,11 +382,61 @@ fn wl_present(win: *window, be: *wl_backend) void = {
 	put_u32(be, 0);
 	put_u32(be, 0);
 	put_u32(be, be.width: u32);
-	put_u32(be, be.height: u32);
+	put_u32(be, (be.height + be.tb): u32);
 	end(be, m);
 	m = begin(be, be.surface, 6); // commit
 	end(be, m);
 	match (flush(be, void)) { case => void; };
+};
+
+// Draws our title bar: the window's title, and a close button that turns
+// red under the pointer. It is drawn with ViperGui's own text and shapes,
+// by pointing the window at the bar's pixels for a moment.
+fn draw_bar(win: *window, be: *wl_backend) void = {
+	const pixels = win.pixels, height = win.height;
+	const cx0 = win.clip_x0, cy0 = win.clip_y0, cx1 = win.clip_x1, cy1 = win.clip_y1;
+	win.pixels = be.bar;
+	win.height = be.tb;
+	clip(win, 0, 0, win.width, be.tb);
+	const w = win.width;
+	rect(win, 0, 0, w, be.tb, 0xff26262c);
+	rect(win, 0, be.tb - 1, w, 1, 0xff121216);
+	// The title, centred, shortened if it doesn't fit.
+	let t = be.title;
+	for (text_width(t, 1) > w - 2 * TB_CLOSE - 8 && len(t) > 0) {
+		t = strings::sub(t, 0, runes(t): size - 1);
+	};
+	text(win, (w - text_width(t, 1)) / 2, (be.tb - FONT_H) / 2, t, 0xffe8e8ec);
+	// Close.
+	const bx = w - TB_CLOSE;
+	if (be.bar_hot == 1) rect(win, bx, 0, TB_CLOSE, be.tb - 1, 0xffc42b1c);
+	const cx = bx + TB_CLOSE / 2, cy = be.tb / 2;
+	for (let d = -1; d <= 1; d += 1) {
+		line(win, cx - 5 + d, cy - 5, cx + 5 + d, cy + 5, 0xfff0f0f0);
+		line(win, cx - 5 + d, cy + 5, cx + 5 + d, cy - 5, 0xfff0f0f0);
+	};
+	win.pixels = pixels;
+	win.height = height;
+	win.clip_x0 = cx0;
+	win.clip_y0 = cy0;
+	win.clip_x1 = cx1;
+	win.clip_y1 = cy1;
+	be.bar_drawn = be.bar_hot;
+};
+
+// The pointer at surface position (x, y): over our title bar, or over the
+// window's own pixels (which start below the bar).
+fn pointer_at(win: *window, be: *wl_backend, x: int, y: int) void = {
+	be.on_bar = y < be.tb;
+	be.bar_x = x;
+	be.bar_hot = if (be.on_bar && x >= be.width - TB_CLOSE) 1 else 0;
+	if (be.on_bar) {
+		win.mouse_x = -1;
+		win.mouse_y = -1;
+	} else {
+		win.mouse_x = x;
+		win.mouse_y = y - be.tb;
+	};
 };
 
 // ---- Wire protocol: writing ----
@@ -565,6 +656,13 @@ fn handle(win: nullable *window, be: *wl_backend, obj: u32, op: u16, data: []u8)
 		if (op == 1) be.closed = true; // close button
 		return;
 	};
+	if (obj == be.decoration && obj != 0) {
+		// configure(mode): 1 = we must draw the title bar ourselves.
+		if (op == 0 && get_u32(&a) == 1 && be.tb == 0 && len(be.bar) == 0) {
+			be.tb = TB;
+		};
+		return;
+	};
 	for (let i = 0z; i < NBUF; i += 1) {
 		if (obj == be.buffers[i] && op == 0) { // wl_buffer.release
 			be.busy[i] = false;
@@ -611,20 +709,37 @@ fn pointer_event(win: *window, be: *wl_backend, op: u16, a: *args) void = {
 	case 0 => // enter(serial, surface, x, y)
 		be.ptr_serial = get_u32(a);
 		get_u32(a);
-		win.mouse_x = get_i32(a) / 256;
-		win.mouse_y = get_i32(a) / 256;
+		const x = get_i32(a) / 256;
+		pointer_at(win, be, x, get_i32(a) / 256);
 		wl_cursor(win, be);
 	case 1 => // leave
 		win.mouse_x = -1;
 		win.mouse_y = -1;
+		be.on_bar = false;
+		be.bar_hot = 0;
 	case 2 => // motion(time, x, y)
 		get_u32(a);
-		win.mouse_x = get_i32(a) / 256;
-		win.mouse_y = get_i32(a) / 256;
+		const x = get_i32(a) / 256;
+		pointer_at(win, be, x, get_i32(a) / 256);
 	case 3 => // button(serial, time, button, state)
-		get_u32(a);
+		const serial = get_u32(a);
 		get_u32(a);
 		const button = get_u32(a), state = get_u32(a);
+		if (be.on_bar && state == 1) {
+			// Our title bar: the close button, or drag to move. (Releases
+			// still go to the window, which may have a button held.)
+			if (button == 0x110) {
+				if (be.bar_hot == 1) {
+					be.closed = true;
+				} else if (be.seat != 0) {
+					const m = begin(be, be.toplevel, 5); // move(seat, serial)
+					put_u32(be, be.seat);
+					put_u32(be, serial);
+					end(be, m);
+				};
+			};
+			return;
+		};
 		const bit: u8 = switch (button) {
 		case 0x110 => yield LEFT_BUTTON;   // BTN_LEFT
 		case 0x111 => yield RIGHT_BUTTON;  // BTN_RIGHT
