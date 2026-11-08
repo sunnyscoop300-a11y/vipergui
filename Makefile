@@ -16,6 +16,9 @@ vipergui-demo: viper/*.ha cmd/demo/*.ha
 flappy-crane: viper/*.ha cmd/flappy/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/flappy/
 
+golden-pong: viper/*.ha cmd/pong/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/pong/
+
 mastodon: viper/*.ha cmd/mastodon/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/mastodon/
 
