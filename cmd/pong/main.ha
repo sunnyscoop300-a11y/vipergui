@@ -198,8 +198,8 @@ fn ring(win: *viper::window, z: f64, col: viper::color) void = {
 };
 
 fn draw_tunnel(win: *viper::window, g: *game) void = {
-	const white = viper::rgb(235, 235, 235);
-	const black = viper::rgb(25, 25, 25);
+    const white = OPPONENTS[g.opp].wall_a;
+	const black = OPPONENTS[g.opp].wall_b;
 	const seg = DEPTH / SEGS: f64;
 	// Far to near, so the near walls end up on top.
 	for (let k = SEGS - 1; k >= 0; k -= 1) {
@@ -229,7 +229,20 @@ fn draw_tunnel(win: *viper::window, g: *game) void = {
 	];
 	const goal = goals[(g.level - 1): size % len(goals)];
 	viper::rect(win, x0: int, y0: int, (x1 - x0): int, (y1 - y0): int,
-				goal);
+		goal);
+};
+
+// XED's pond: lily pads with pink flowers on the bottom of the tunnel.
+fn draw_pond(win: *viper::window) void = {
+	const pads: [_](f64, f64) = [(-0.55, 1.2), (0.45, 2.6), (-0.2, 4.3),
+		(0.6, 5.8), (-0.6, 7.0)];
+	for (let i = 0z; i < len(pads); i += 1) {
+		const (x, z) = pads[i];
+		const r = (0.16 * F / (z + Z0)): int;
+		const cx = sx(x, z): int, cy = sy(HY, z): int;
+		viper::circle(win, cx, cy, r, viper::rgb(70, 170, 70));
+		viper::circle(win, cx + r / 3, cy - r / 4, r / 3, viper::rgb(255, 150, 200));
+	};
 };
 
 fn draw_zebra(win: *viper::window, g: *game) void = {
@@ -314,12 +327,13 @@ export fn main() void = {
 		};
 		viper::clear(win, viper::rgb(10, 10, 14));
 		draw_tunnel(win, &g);
+        if (OPPONENTS[g.opp].file == "xed") draw_pond(win);
 		draw_zebra(win, &g);
 		draw_ball(win, &g);
 		draw_player(win, &g);
 
 		const score = fmt::bsprintf(buf, "DIG {}   {} {}", g.me, OPPONENTS[g.opp].short, g.zebra)!;
-
+		centered(win, 14, score, 2, gold);
 		switch (g.st) {
 		case state::READY =>
 			centered(win, 250, "GOLDEN PONG 3D", 4, gold);
