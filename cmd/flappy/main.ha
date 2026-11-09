@@ -1,5 +1,9 @@
 // Flappy Crane — a ViperGui game demo.
 // Space / click / Up to flap. Fly Crane through the bamboo. Esc quits.
+use io;
+use os;
+use strconv;
+use strings;
 use fmt;
 use math::random;
 use viper;
@@ -116,7 +120,7 @@ fn update(win: *viper::window, g: *game) void = {
 		if (hits(g)) {
 			g.st = state::DEAD;
 			g.vy = -200.0;
-			if (g.score > g.best) g.best = g.score;
+		if (g.score > g.best) { g.best = g.score; save_best(g.best); };
             g.sfx = 3;
 		};
 	case state::DEAD =>
@@ -349,6 +353,44 @@ fn centered(win: *viper::window, y: int, s: str, scale: int) void =
 // Dark text for use on the light score panel.
 fn centered_dark(win: *viper::window, y: int, s: str, scale: int, col: viper::color) void =
 	viper::text_scaled(win, (W - viper::text_width(s, scale)) / 2, y, s, col, scale);
+// Where the high score lives: ~/.flappy-crane-best
+fn best_path(buf: []u8) str = {
+	const home = match (os::getenv("HOME")) {
+	case let h: str => yield h;
+	case void => yield ".";
+	};
+	return fmt::bsprintf(buf, "{}/.flappy-crane-best", home)!;
+};
+
+fn load_best() int = {
+	let buf: [256]u8 = [0...];
+	const f = match (os::open(best_path(buf))) {
+	case let f: io::file => yield f;
+	case => return 0; // no file yet = no record yet
+	};
+	defer io::close(f)!;
+	let data: [32]u8 = [0...];
+	const n = match (io::read(f, data)) {
+	case let n: size => yield n;
+	case => return 0;
+	};
+	const s = strings::trim(strings::fromutf8(data[..n])!);
+	match (strconv::stoi(s)) {
+	case let v: int => return v;
+	case => return 0;
+	};
+};
+
+fn save_best(best: int) void = {
+	let buf: [256]u8 = [0...];
+	const f = match (os::create(best_path(buf), 0o644)) {
+	case let f: io::file => yield f;
+	case => return;
+	};
+	defer io::close(f)!;
+	fmt::fprintln(f, best)!;
+};
+
 
 export fn main() void = {
 	const win = match (viper::open("Flappy Crane - ViperGui", W, H)) {
@@ -380,6 +422,7 @@ export fn main() void = {
 	case viper::imgerror => void;
 	};
 	reset(&g);
+    g.best = load_best();
 	let buf: [32]u8 = [0...];
 
 	for (viper::frame(win)) {
