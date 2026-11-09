@@ -21,7 +21,7 @@ def PH: f64 = 0.24;      // paddle half height
 def WIN_SCORE: int = 7;
 def SEGS: int = 8;       // zebra stripes along the tunnel
 
-type state = enum { READY, PLAYING, POINT, OVER };
+type state = enum { MENU, READY, PLAYING, POINT, OVER };
 
 type game = struct {
 	st: state,
@@ -36,6 +36,7 @@ type game = struct {
 	pause: f64,
 	t: f64,
     hit: int,    // 0 = intet, 1 = din pind, 2 = zebraens pind, 3 = point
+    opp: size,   // valgt modstander (nummer i OPPONENTS)
 };
 
 // --- 3D -> 2D: the only maths a tunnel needs ---
@@ -62,7 +63,7 @@ fn reset(g: *game) void = {
 	g.vy = 0.0;
 	g.vz = 0.0;
 	g.msg = "";
-	g.st = state::READY;
+	g.st = state::MENU;
 };
 
 fn serve(g: *game) void = {
@@ -79,10 +80,10 @@ fn point(g: *game, mine: bool) void = {
 	if (mine) {
 		g.me += 1;
 		g.level += 1;
-		g.msg = "FWEET! Zebra-dommeren: point til dig!";
+		g.msg = OPPONENTS[g.opp].you_msg;
 	} else {
 		g.zebra += 1;
-		g.msg = "FWEET! Zebra-dommeren: point til zebraen!";
+		g.msg = OPPONENTS[g.opp].opp_msg;
 	};
 	g.hit = 3;
 	g.st = state::POINT;
@@ -103,6 +104,9 @@ fn update(win: *viper::window, g: *game) void = {
 		|| viper::key_pressed(win, viper::key::SPACE);
 
 	switch (g.st) {
+    case state::MENU =>
+		if (menu_input(win, &g.opp)) g.st = state::READY;
+		return;
 	case state::READY =>
 		if (click) serve(g);
 		return;
@@ -123,8 +127,9 @@ fn update(win: *viper::window, g: *game) void = {
 	};
 
 	// Zebra AI: chases the ball, a little faster every level.
-	const ai = 0.6 + g.level: f64 * 0.32;
-	if (g.vz > 0.0) {
+	const o = OPPONENTS[g.opp];
+	const ai = o.speed + g.level: f64 * o.grow;
+	if (!o.sleepy || g.vz > 0.0) {
 		g.zx = clampf(g.zx + clampf(g.bx - g.zx, -ai * dt, ai * dt), -HX + PW, HX - PW);
 		g.zy = clampf(g.zy + clampf(g.by - g.zy, -ai * dt, ai * dt), -HY + PH, HY - PH);
 	};
@@ -224,7 +229,7 @@ fn draw_tunnel(win: *viper::window, g: *game) void = {
 	];
 	const goal = goals[(g.level - 1): size % len(goals)];
 	viper::rect(win, x0: int, y0: int, (x1 - x0): int, (y1 - y0): int,
-		viper::rgb(40, 90, 60));
+				goal);
 };
 
 fn draw_zebra(win: *viper::window, g: *game) void = {
@@ -281,6 +286,9 @@ export fn main() void = {
 	defer viper::sound_free(&plonk);
 	let fweet = viper::tone(viper::wave::SINE, 1800.0, 2400.0, 0.35, 0.4, 0.01);
 	defer viper::sound_free(&fweet);
+    let pics = portraits { ... };
+	load_portraits(&pics);
+	defer free_portraits(&pics);
 
 	let g = game { ... };
 	reset(&g);
@@ -299,14 +307,18 @@ export fn main() void = {
 		};
 		g.hit = 0;
 		viper::audio_pump(snd);
+        if (g.st == state::MENU) {
+			draw_menu(win, &pics, g.opp, g.t);
+			viper::present(win);
+			continue;
+		};
 		viper::clear(win, viper::rgb(10, 10, 14));
 		draw_tunnel(win, &g);
 		draw_zebra(win, &g);
 		draw_ball(win, &g);
 		draw_player(win, &g);
 
-		const score = fmt::bsprintf(buf, "DIG {}   ZEBRA {}", g.me, g.zebra)!;
-		centered(win, 14, score, 2, gold);
+		const score = fmt::bsprintf(buf, "DIG {}   {} {}", g.me, OPPONENTS[g.opp].short, g.zebra)!;
 
 		switch (g.st) {
 		case state::READY =>
@@ -315,8 +327,9 @@ export fn main() void = {
 		case state::POINT =>
 			centered(win, 290, g.msg, 2, white);
 		case state::OVER =>
-			centered(win, 250, if (g.me >= WIN_SCORE) "DU VANDT!" else "ZEBRAEN VANDT!", 4, gold);
+			centered(win, 250, if (g.me >= WIN_SCORE) "DU VANDT!" else OPPONENTS[g.opp].won, 4, gold);
 			centered(win, 320, "Klik for en ny kamp", 2, white);
+        case state::MENU => void;
 		case state::PLAYING => void;
 		};
 
