@@ -5,13 +5,14 @@
 use fmt;
 use viper;
 
-def NOPP: size = 4;          // number of opponents
+def NOPP: size = 5;          // number of opponents
 def MAXFRAMES: size = 9;     // most animation frames an opponent may have
-def PIC: int = 150;          // portrait size on the cards
-def CARD_W: int = 170;
-def CARD_H: int = 260;
-def CARD_GAP: int = 16;
+def PIC: int = 126;          // portrait size on the cards
+def CARD_W: int = 146;
+def CARD_H: int = 220;
+def CARD_GAP: int = 10;
 def CARD_Y: int = 150;
+
 type opponent = struct {
 	name: str,             // shown on the card
 	short: str,            // shown in the score line
@@ -73,9 +74,9 @@ const OPPONENTS: [NOPP]opponent = [
 	},
 	opponent {
 		name = "Momeno",
-		short = "GIRAF",
+		short = "Momeno",
 		level = "Svaer",
-		file = "giraffe",
+		file = "Momeno",
 		frames = 9,
 		frame_t = 0.15,
 		speed = 1.3,
@@ -108,6 +109,25 @@ const OPPONENTS: [NOPP]opponent = [
 		you_msg = "FWEET! Point til dig! XED: </> bug fundet!",
 		opp_msg = "FWEET! Point til XED! Hacked!",
 		won = "XED VANDT! GG EZ </>",
+	},
+	opponent {
+		name = "Gustu",
+		short = "GUSTU",
+		level = "MEGA BOSS",
+		file = "gustu",
+		frames = 9,
+		frame_t = 0.16,
+		speed = 1.9,
+		grow = 0.5,
+		sleepy = false,
+		pad = 0xfff0f6ff,
+		stripe = 0xffffcc33,
+		card = 0xff4a2a8a,
+		wall_a = 0xffbfe6ff,
+		wall_b = 0xff5a2a9a,
+		you_msg = "FWEET! Point til dig! Gustu smelter!",
+		opp_msg = "FWEET! Point til Gustu! Iskoldt!",
+		won = "GUSTU VANDT! STAY FROSTY",
 	},
 ];
 
@@ -212,9 +232,9 @@ fn draw_menu(win: *viper::window, p: *portraits, sel: size, t: f64) void = {
 			viper::circle(win, px + PIC / 2 + 18, py + PIC / 2 - 12, 7, o.stripe);
 		};
 		viper::text_scaled(win, x + (CARD_W - viper::text_width(o.name, 2)) / 2,
-			y + 180, o.name, white, 2);
+			y + 150, o.name, white, 2);
 		viper::text_scaled(win, x + (CARD_W - viper::text_width(o.level, 2)) / 2,
-			y + 218, o.level, gold, 2);
+			y + 186, o.level, gold, 2);
 	};
 	centered(win, 460, "Pile / mus: vaelg    Enter / klik: spil    Esc: afslut", 1, white);
 };
