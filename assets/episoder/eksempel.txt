@@ -1,0 +1,25 @@
+# Eksempel på en serie til Episoder. Lav din egen som
+# ~/.local/share/episoder/serie.txt (eller assets/episoder/serie.txt):
+#
+#   navn      seriens navn
+#   genrer    vises under navnet
+#   år        året den blev sendt
+#   studie    studiet bag
+#   minutter  ca. længde på et afsnit
+#   del       hvor mange afsnit der er i en del (en fane i listen)
+#   afsnit    DATO | TITEL   (en linje pr. afsnit, i rækkefølge)
+
+navn Eksempel
+genrer Eventyr  ·  Action
+år 2024
+studie Studio Eksempel
+minutter 24
+del 4
+afsnit 4. jan 2024 | Den første dag
+afsnit 11. jan 2024 | Vejen mod nord
+afsnit 18. jan 2024 | Et brev fra bjergene
+afsnit 25. jan 2024 | Stormen
+afsnit 1. feb 2024 | Den gamle port
+afsnit 8. feb 2024 | Lanternernes nat
+afsnit 15. feb 2024 | To veje
+afsnit 22. feb 2024 | Hjem igen

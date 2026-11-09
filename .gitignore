@@ -5,6 +5,7 @@
 /demo-hare
 /mastodon
 /bines
+/episoder
 
 # Not source: downloads, packages, screenshots, games and secrets
 *.tar.gz
@@ -19,3 +20,5 @@ wl-debug.txt
 /jade
 golden-pong
 flappy-unicorn
+/assets/episoder/skin.png
+/assets/episoder/serie.txt

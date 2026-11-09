@@ -108,6 +108,10 @@ cmd/bines/         Bines: honeycomb match-3 game, with Queen Evalin
                    and her scepter booster                    (make play)
 cmd/jade/          Jade: snake in 3D in a temple garden, with
                    its own software 3D renderer               (make slange)
+cmd/episoder/      Episoder: episode tracker for a series you
+                   describe in serie.txt (see assets/episoder/
+                   eksempel.txt), with notes, stats and
+                   "play next" (xdg-open)                     (make episoder)
 assets/mastodon/   sprites + persona for the chat
 assets/crane/      Crane sprite sheet for Flappy Crane
 assets/logo/       logo + icon (SVG and PNG 16-512 px)
