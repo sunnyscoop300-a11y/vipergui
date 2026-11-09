@@ -123,9 +123,11 @@ fn update(win: *viper::window, g: *game) void = {
 	};
 
 	// Zebra AI: chases the ball, a little faster every level.
-	const ai = 0.9 + g.level: f64 * 0.35;
-	g.zx = clampf(g.zx + clampf(g.bx - g.zx, -ai * dt, ai * dt), -HX + PW, HX - PW);
-	g.zy = clampf(g.zy + clampf(g.by - g.zy, -ai * dt, ai * dt), -HY + PH, HY - PH);
+	const ai = 0.6 + g.level: f64 * 0.32;
+	if (g.vz > 0.0) {
+		g.zx = clampf(g.zx + clampf(g.bx - g.zx, -ai * dt, ai * dt), -HX + PW, HX - PW);
+		g.zy = clampf(g.zy + clampf(g.by - g.zy, -ai * dt, ai * dt), -HY + PH, HY - PH);
+	};
 
 	// Move the ball and bounce off the tunnel walls.
 	g.bx += g.vx * dt;
