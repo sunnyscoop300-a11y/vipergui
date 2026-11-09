@@ -19,6 +19,9 @@ flappy-crane: viper/*.ha cmd/flappy/*.ha
 golden-pong: viper/*.ha cmd/pong/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/pong/
 
+flappy-unicorn: viper/*.ha cmd/unicorn/*.ha
+	$(HARE) build -lSDL2 -o $@ cmd/unicorn/
+
 mastodon: viper/*.ha cmd/mastodon/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/mastodon/
 
