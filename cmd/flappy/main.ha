@@ -35,6 +35,7 @@ type game = struct {
 	scroll: f64,    // ground/background offset
 	t: f64,         // time, for wing/bob animation
 	dead_t: f64,
+    sfx: int,       // 0 = stille, 1 = flap, 2 = point, 3 = ouch
 	rng: random::random,
 };
 
@@ -47,6 +48,7 @@ fn reset(g: *game) void = {
 	g.vy = 0.0;
 	g.score = 0;
 	g.dead_t = 0.0;
+    g.sfx = 0;
 	for (let i = 0z; i < NSTALKS; i += 1) {
 		g.stalks[i] = stalk {
 			x = W: f64 + 120.0 + i: f64 * SPACING,
@@ -84,11 +86,12 @@ fn update(win: *viper::window, g: *game) void = {
 		g.y = 260.0 + 8.0 * sinish(g.t * 3.0);
 		if (flap) {
 			g.st = state::PLAYING;
-			g.vy = FLAP;
+			     g.vy = FLAP;
+            g.sfx = 1;
 		};
 	case state::PLAYING =>
 		g.scroll += SPEED * dt;
-		if (flap) g.vy = FLAP;
+		if (flap) { g.vy = FLAP; g.sfx = 1; };
 		g.vy += GRAVITY * dt;
 		g.y += g.vy * dt;
 
@@ -98,6 +101,7 @@ fn update(win: *viper::window, g: *game) void = {
 			if (!s.scored && s.x + STALK_W: f64 < BIRD_X) {
 				s.scored = true;
 				g.score += 1;
+                g.sfx = 2;
 			};
 			if (s.x < -STALK_W: f64) {
 				// Recycle behind the right-most stalk.
@@ -113,6 +117,7 @@ fn update(win: *viper::window, g: *game) void = {
 			g.st = state::DEAD;
 			g.vy = -200.0;
 			if (g.score > g.best) g.best = g.score;
+            g.sfx = 3;
 		};
 	case state::DEAD =>
 		g.dead_t += dt;
@@ -355,6 +360,14 @@ export fn main() void = {
 		fmt::fatal("viper: out of memory");
 	};
 	defer viper::close(win);
+    const snd = viper::audio_open();
+	defer viper::audio_close(snd);
+	let fwip = viper::tone(viper::wave::TRIANGLE, 400.0, 900.0, 0.08, 0.5, 0.005);
+	let pling = viper::tone(viper::wave::SINE, 1200.0, 1800.0, 0.12, 0.4, 0.005);
+	let bonk = viper::tone(viper::wave::SQUARE, 300.0, 60.0, 0.4, 0.5, 0.005);
+	defer viper::sound_free(&fwip);
+	defer viper::sound_free(&pling);
+	defer viper::sound_free(&bonk);
 
 	let g = game { rng = random::init(viper::ticks(): u64 + 7), ... };
 	let sprites = load_sheet("assets/crane/crane.png");
@@ -402,7 +415,14 @@ export fn main() void = {
 				centered_dark(win, 322, "Flap to try again", 1, 0xff7d6b52);
 			};
 		};
-
+        switch (g.sfx) {
+		case 1 => viper::play(snd, &fwip, 0.6, 1.0);
+		case 2 => viper::play(snd, &pling, 0.6, 1.0);
+		case 3 => viper::play(snd, &bonk, 0.8, 1.0);
+		case => void;
+		};
+		g.sfx = 0;
+		viper::audio_pump(snd);
 		viper::present(win);
 	};
 };
