@@ -9,11 +9,13 @@
 //	  Steam/<appid>/backups/<stamp>/<n>/...   the files of save folder n
 //	  Steam/<appid>/metadata/<stamp>.txt      what is in that backup
 //	covers/<appid>.png, covers/<appid>-banner.png   pictures, if you have them
+//	settings.txt    "behold N": backups kept per game (0 = all)
 use ascii;
 use fmt;
 use fs;
 use io;
 use os;
+use strconv;
 use strings;
 use time;
 use time::date;
@@ -308,4 +310,38 @@ fn copy_utf8(buf: []u8, s: str) size = {
 	for (n > 0 && n < len(b) && b[n] & 0xC0 == 0x80) n -= 1;
 	buf[..n] = b[..n];
 	return n;
+};
+
+// ---- Settings ----
+
+// How many backups are kept per game; older ones are deleted after a
+// backup. 0 keeps them all.
+let KEEP: size = 10;
+const KEEP_CHOICES: [_]size = [0, 3, 5, 10, 20, 50];
+
+fn load_settings() void = {
+	const p = path("settings.txt");
+	defer free(p);
+	const text = match (read_text(p)) {
+	case let s: str => yield s;
+	case void => return;
+	};
+	defer free(text);
+	let it = strings::tokenize(text, "\n");
+	for (let line => strings::next_token(&it)) {
+		const (k, v) = strings::cut(strings::trim(line), " ");
+		if (k == "behold") match (strconv::stoz(strings::trim(v))) {
+		case let n: size => KEEP = n;
+		case => void;
+		};
+	};
+};
+
+fn save_settings() void = {
+	const p = path("settings.txt");
+	defer free(p);
+	let b: [64]u8 = [0...];
+	match (write_file(p, fmt::bsprintf(b, "behold {}\n", KEEP)!)) {
+	case => void;
+	};
 };

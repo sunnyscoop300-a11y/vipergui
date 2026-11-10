@@ -1,6 +1,7 @@
 // HPO STEAM SAVE MANAGER — running other programs: MEGAcmd for the cloud,
 // and tasklist.exe (WSL) or pgrep (Linux) to see if a game is running.
 use ascii;
+use fmt;
 use fs;
 use io;
 use os;
@@ -64,6 +65,36 @@ fn running(proc: str) bool = {
 		return r.1;
 	case void => return false;
 	};
+};
+
+// Starts a program and leaves it running, its output thrown away. False
+// when there is no such program.
+fn spawn(name: str, args: str...) bool = {
+	let cmd = match (exec::cmd(name, args...)) {
+	case let c: exec::command => yield c;
+	case => return false;
+	};
+	exec::addfile(&cmd, os::stdin_file, exec::nullfd)!;
+	exec::addfile(&cmd, os::stdout_file, exec::nullfd)!;
+	exec::addfile(&cmd, os::stderr_file, exec::nullfd)!;
+	match (exec::start(&cmd)) {
+	case exec::process => return true;
+	case => return false;
+	};
+};
+
+fn wsl() bool = os::getenv("WSL_DISTRO_NAME") is str || os::exists("/proc/sys/fs/binfmt_misc/WSLInterop");
+
+// Starts a game through Steam (steam://rungameid/<appid>): in WSL the
+// Windows Steam, on Linux Steam itself (in its own session, so closing
+// the terminal doesn't close it), else whatever opens steam:// links.
+fn start_game(appid: str) bool = {
+	let ub: [64]u8 = [0...];
+	const url = fmt::bsprintf(ub, "steam://rungameid/{}", appid)!;
+	if (wsl()) return spawn("explorer.exe", url);
+	if (spawn("setsid", "-f", "steam", url)) return true;
+	if (spawn("steam", url)) return true;
+	return spawn("xdg-open", url);
 };
 
 // ---- MEGA ----

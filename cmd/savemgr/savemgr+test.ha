@@ -159,3 +159,38 @@ fn setup() void = {
 	assert(find_cached("2467880", "library_hero.jpg") is void);
 	assert(find_cached("1", "header.jpg") is void);
 };
+
+@test fn deleting_backups() void = {
+	setup();
+	let stamps: []str = [];
+	defer strings::freeall(stamps);
+	for (let i = 0; i < 4; i += 1) {
+		put(tp("/game/saves/slot1.sav"), "x");
+		append(stamps, backup_game(0, "") as str)!;
+	};
+	assert(len(stamps) == 4);
+	// One by hand.
+	assert(delete_backup("1172380", stamps[1]) is void);
+	assert(delete_backup("1172380", stamps[1]) is failure);
+	assert(delete_backup("1172380", "../x") is failure);
+	assert(delete_backup("1172380", "") is failure);
+	let bs = list_backups("1172380");
+	assert(len(bs) == 3);
+	free_backups(bs);
+	const gone = fmt::asprintf("{}/hpo-saves/Saves/Steam/1172380/backups/{}", TROOT, stamps[1])!;
+	defer free(gone);
+	assert(!os::exists(gone));
+	// Keep the newest two; 0 keeps all.
+	assert(prune("1172380", 0) == 0);
+	assert(prune("1172380", 2) == 1);
+	let bs = list_backups("1172380");
+	defer free_backups(bs);
+	assert(len(bs) == 2 && bs[0].stamp == stamps[3] && bs[1].stamp == stamps[2]);
+	assert(verify("1172380", stamps[3]) is void);
+	// Settings.
+	KEEP = 5;
+	save_settings();
+	KEEP = 10;
+	load_settings();
+	assert(KEEP == 5);
+};

@@ -479,3 +479,42 @@ fn exists_backup(appid: str, stamp: str) bool = {
 	defer free(p);
 	return os::exists(p);
 };
+
+// Deletes one backup: its files and its metadata. The metadata goes first,
+// so a half-deleted backup is never listed.
+fn delete_backup(appid: str, stamp: str) (void | failure) = {
+	if (len(stamp) == 0 || strings::contains(stamp, "/") || strings::contains(stamp, "..")) {
+		return err("ugyldig backup: {}", stamp);
+	};
+	const base = game_dir(appid);
+	defer free(base);
+	const mp = fmt::asprintf("{}/metadata/{}.txt", base, stamp)!;
+	defer free(mp);
+	const dir = fmt::asprintf("{}/backups/{}", base, stamp)!;
+	defer free(dir);
+	if (!os::exists(mp)) return err("backuppen {} findes ikke", stamp);
+	match (os::remove(mp)) {
+	case void => void;
+	case => return err("kunne ikke slette {}", mp);
+	};
+	cleanup(dir);
+	let lb: [200]u8 = [0...];
+	const name = match (find_game(appid)) {
+	case let i: size => yield GAMES[i].name;
+	case void => yield appid;
+	};
+	log(fmt::bsprintf(lb, "Backup slettet: {} ({})", name, stamp)!);
+};
+
+// Keeps only the newest `keep` backups of a game (0 keeps them all).
+// Returns how many were deleted.
+fn prune(appid: str, keep: size) size = {
+	if (keep == 0) return 0;
+	const bs = list_backups(appid);
+	defer free_backups(bs);
+	let n = 0z;
+	for (let i = keep; i < len(bs); i += 1) {
+		if (delete_backup(appid, bs[i].stamp) is void) n += 1;
+	};
+	return n;
+};

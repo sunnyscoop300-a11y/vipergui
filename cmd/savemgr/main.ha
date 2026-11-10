@@ -7,7 +7,8 @@
 // as ~/.local/share/hpo-saves/skin.png it is the background, and what
 // changes is painted over it and drawn live.
 //
-// Keys: up/down pick a game, B backs it up, F5 reads everything again,
+// Keys: up/down pick a game, Enter starts it, B backs it up, F5 reads
+// everything again,
 // Tab the next page, Esc quits.
 use fmt;
 use fs;
@@ -159,6 +160,7 @@ fn reload(a: *app) void = {
 	const old = if (a.sel < len(GAMES)) strings::dup(GAMES[a.sel].appid)! else "";
 	defer free(old);
 	load_games();
+	load_settings();
 	for (let i .. a.infos) free_backups(i.backups);
 	free(a.infos);
 	a.infos = [];
@@ -367,6 +369,7 @@ fn do_backup(a: *app, gi: size) bool = {
 	match (backup_game(gi, "")) {
 	case let s: str =>
 		free(s);
+		prune(GAMES[gi].appid, KEEP);
 		refresh(a, gi);
 		const b = a.infos[gi].backups;
 		let m: [160]u8 = [0...], z: [32]u8 = [0...];
@@ -391,6 +394,7 @@ fn do_restore(a: *app) void = {
 	match (restore(gi, stamp)) {
 	case let before: str =>
 		free(before);
+		prune(GAMES[gi].appid, KEEP);
 		refresh(a, gi);
 		a.rsel = 0;
 		let m: [200]u8 = [0...];
@@ -405,6 +409,48 @@ fn do_restore(a: *app) void = {
 		log(strings::fromutf8_unsafe(m[..n]));
 		complain(a, strings::fromutf8_unsafe(m[..n]));
 		refresh(a, gi);
+	};
+};
+
+fn do_start(a: *app, gi: size) void = {
+	const g = GAMES[gi];
+	let m: [200]u8 = [0...];
+	if (running(g.proc)) {
+		say(a, fmt::bsprintf(m, "{} kører allerede.", g.name)!);
+		return;
+	};
+	if (start_game(g.appid)) {
+		log(fmt::bsprintf(m, "Spil startet: {}", g.name)!);
+		say(a, fmt::bsprintf(m, "Starter {} i Steam ...", g.name)!);
+	} else {
+		complain(a, "Kunne ikke starte Steam (steam / xdg-open mangler).");
+	};
+};
+
+// The chosen backup on the restore page, pressed twice.
+fn do_delete(a: *app) void = {
+	const gi = a.sel;
+	const bs = a.infos[gi].backups;
+	if (a.rsel >= len(bs)) return;
+	let m: [200]u8 = [0...], t: [32]u8 = [0...];
+	if (!(a.armed > 0.0 && a.armed_what == 3)) {
+		a.armed = 5.0;
+		a.armed_what = 3;
+		say(a, fmt::bsprintf(m, "Tryk Slet igen for at slette backuppen fra {}.",
+			stamp_text(t, bs[a.rsel].when))!);
+		return;
+	};
+	a.armed = 0.0;
+	const when = bs[a.rsel].when;
+	match (delete_backup(GAMES[gi].appid, bs[a.rsel].stamp)) {
+	case void =>
+		refresh(a, gi);
+		if (a.rsel > 0 && a.rsel >= len(a.infos[gi].backups)) a.rsel -= 1;
+		say(a, fmt::bsprintf(m, "Backuppen fra {} er slettet.", stamp_text(t, when))!);
+	case let e: failure =>
+		let c: [256]u8 = [0...];
+		const n = copy_utf8(c, e);
+		complain(a, strings::fromutf8_unsafe(c[..n]));
 	};
 };
 
@@ -459,6 +505,7 @@ fn keys(win: *viper::window, a: *app) bool = {
 	if (viper::key_pressed(win, viper::key::DOWN) && at + 1 < len(a.view)) pick(a, a.view[at + 1]);
 	if (viper::key_pressed(win, viper::key::UP) && at > 0) pick(a, a.view[at - 1]);
 	if (viper::key_pressed(win, viper::key::B) && a.sel < len(GAMES)) do_backup(a, a.sel);
+	if (viper::key_pressed(win, viper::key::RETURN) && a.sel < len(GAMES)) do_start(a, a.sel);
 	return false;
 };
 
@@ -842,6 +889,10 @@ fn draw_details(win: *viper::window, a: *app) void = {
 		};
 	};
 	viper::outline(win, bx, by, bw, bh, C_CYAN_DIM);
+	// Start the game.
+	if (btn(win, a, 1468, 236, 170, 40, "Start spil", icon::PLAY, style::GREEN, false)) {
+		do_start(a, a.sel);
+	};
 	// The name.
 	draw_icon(win, icon::DISC, X(1222), Y(317), C_TEXT);
 	if (viper::text_width(g.name, 2) <= X(1645) - X(1256)) {
@@ -1011,6 +1062,11 @@ fn draw_restore(win: *viper::window, a: *app) void = {
 			const n = copy_utf8(m, e);
 			complain(a, strings::fromutf8_unsafe(m[..n]));
 		};
+	};
+	const del = a.armed > 0.0 && a.armed_what == 3;
+	if (len(bs) > 0 && btn(win, a, 720, wy, 220, 44, if (del) "Tryk igen!" else "Slet backup",
+			icon::TRASH, style::RED, false)) {
+		do_delete(a);
 	};
 	neon(win, X(480), Y(696), L(660), L(112), 8, C_YELLOW, 0xff1c1a08);
 	bold(win, X(496), Y(706), "Steam Cloud", C_YELLOW);
@@ -1242,17 +1298,33 @@ fn draw_settings(win: *viper::window, a: *app) void = {
 	};
 	y += 16;
 	const tips = [
-		"Covers hentes selv fra Steams cache (appcache/librarycache) eller fra",
-		"Steams server (curl), og laves til PNG med ImageMagick eller ffmpeg.",
-		"Dine egne PNG'er i covers/ bruges i stedet, hvis de er der.",
-		"",
-		"Gamle backups slettes ikke af programmet; slet dem i Saves-mappen, hvis",
-		"der bliver for mange (metadata/<tid>.txt og backups/<tid>/ hører sammen).",
+		"Covers hentes selv fra Steams cache eller server",
+		"og laves til PNG med ImageMagick eller ffmpeg.",
+		"Egne PNG'er i covers/ bruges i stedet.",
 	];
 	for (let t .. tips) {
 		text_clip(win, x, y, X(1150) - x, t, C_DIM, false);
 		y += 22;
 	};
+	// How many backups to keep.
+	y += 20;
+	bold(win, x, y + 10, "Behold backups pr. spil:", C_YELLOW);
+	let kb: [32]u8 = [0...];
+	const ks = if (KEEP == 0) "alle" else fmt::bsprintf(kb, "{} nyeste", KEEP)!;
+	const ky = y * 1672 / 1280;
+	let at = 0z;
+	for (let i = 0z; i < len(KEEP_CHOICES); i += 1) if (KEEP_CHOICES[i] == KEEP) at = i;
+	if (btn(win, a, 820, ky, 40, 36, "-", void, style::PLAIN, false) && at > 0) {
+		KEEP = KEEP_CHOICES[at - 1];
+		save_settings();
+	};
+	field(win, X(870), Y(ky), L(150), L(36), ks);
+	if (btn(win, a, 1030, ky, 40, 36, "+", void, style::PLAIN, false) && at + 1 < len(KEEP_CHOICES)) {
+		KEEP = KEEP_CHOICES[at + 1];
+		save_settings();
+	};
+	viper::text(win, x, y + L(48), "Ældre slettes efter hver backup. \"alle\" sletter intet.", C_DIM);
+	viper::text(win, x, y + L(48) + 20, "En enkelt backup slettes under Gendan.", C_DIM);
 	if (btn(win, a, 484, 700, 260, 46, "Læs alt igen (F5)", icon::SYNC, style::CYAN, false)) {
 		reload(a);
 		check_mega(a, true);

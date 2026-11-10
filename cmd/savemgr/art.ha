@@ -92,7 +92,7 @@ fn draw_cover(win: *viper::window, x: int, y: int, w: int, h: int, name: str, se
 
 type icon = enum {
 	GAMEPAD, CLOUD_UP, RESTORE, SYNC, FOLDER, COG, LOG, INFO,
-	STAR, STAR_FULL, CHECK, SEARCH, CALENDAR, EXTERNAL, DOTS, DISC,
+	STAR, STAR_FULL, CHECK, SEARCH, CALENDAR, EXTERNAL, DOTS, DISC, PLAY, TRASH,
 };
 
 fn draw_icon(win: *viper::window, id: icon, cx: int, cy: int, col: u32) void = {
@@ -181,6 +181,16 @@ fn draw_icon(win: *viper::window, id: icon, cx: int, cy: int, col: u32) void = {
 		viper::line(win, cx + 7, cy - 7, cx + 7, cy - 2, col);
 	case icon::DOTS =>
 		for (let i = -1; i <= 1; i += 1) viper::circle(win, cx + i * 5, cy, 1, col);
+	case icon::PLAY =>
+		const t: [3](f64, f64) = [((cx - 5): f64, (cy - 8): f64), ((cx - 5): f64, (cy + 8): f64),
+			((cx + 8): f64, cy: f64)];
+		viper::polygon(win, t, col);
+	case icon::TRASH =>
+		viper::rect(win, cx - 8, cy - 6, 16, 2, col);
+		viper::rect(win, cx - 3, cy - 8, 6, 2, col);
+		viper::outline(win, cx - 6, cy - 3, 12, 12, col);
+		viper::line(win, cx - 2, cy - 1, cx - 2, cy + 6, col);
+		viper::line(win, cx + 2, cy - 1, cx + 2, cy + 6, col);
 	case icon::DISC =>
 		viper::circle(win, cx, cy, 9, col);
 		viper::circle(win, cx, cy, 7, C_INK);
