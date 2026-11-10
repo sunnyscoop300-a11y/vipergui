@@ -623,7 +623,7 @@ fn draw_library(win: *viper::window, a: *app) void = {
 		else fmt::bsprintf(b, "Mine Steam-spil ({})", len(GAMES))!;
 	bold2(win, X(534), Y(132) - 16, title, C_TEXT);
 	// The search box, or on the backup page: tick all / none.
-	paint(win, a, 866, 105, 306, 54, 866);
+	paint(win, a, 958, 105, 214, 54, 958);
 	if (backup_page) {
 		const all = nchk == len(GAMES): int && nchk > 0;
 		if (btn(win, a, 962, 110, 204, 45, if (all) "Fravælg alle" else "Vælg alle",
@@ -695,16 +695,12 @@ fn card(win: *viper::window, a: *app, gi: size, y: int, backup_page: bool) void 
 	case null => draw_cover(win, cx, cy + L(7), cw, chh, g.name, gi);
 	};
 	// The name and the facts.
-	const tx = X(670), room = X(915) - tx;
-	if (viper::text_width(g.name, 2) <= room) {
-		bold2(win, tx, cy + L(10), g.name, C_TEXT);
-	} else {
-		text_clip(win, tx, cy + L(18), X(1100) - tx, g.name, C_TEXT, true);
-	};
+	const tx = X(670);
+	text_clip(win, tx, cy + L(16), X(1135) - tx, g.name, C_YEL_HI, true);
 	let b: [64]u8 = [0...], z: [32]u8 = [0...];
 	draw_icon(win, icon::FOLDER, X(684), cy + L(62), C_DIM);
-	viper::text(win, X(705), cy + L(62) - 8, if (!inf.readable && len(g.dirs) > 0) "Save: mappen mangler"
-		else if (len(g.dirs) == 0) "Save: ingen mappe valgt"
+	viper::text(win, X(705), cy + L(62) - 8, if (!inf.readable && len(g.dirs) > 0) "Save: mangler"
+		else if (len(g.dirs) == 0) "Save: ingen mappe"
 		else fmt::bsprintf(b, "Save: {}", size_text(z, inf.save_sz))!,
 		if (!inf.readable) C_RED else C_TEXT);
 	draw_icon(win, icon::CALENDAR, X(684), cy + L(92), C_DIM);
@@ -715,17 +711,17 @@ fn card(win: *viper::window, a: *app, gi: size, y: int, backup_page: bool) void 
 	const py = cy + L(43), ph = L(30);
 	let do_it = false;
 	if (!inf.readable) {
-		pill(win, X(925), py, L(175), ph, "Tjek save-stien", C_RED, 0);
+		pill(win, X(905), py, L(200), ph, "Tjek save-stien", C_RED, 0);
 	} else if (changed) {
-		const over = hit(win, X(925), py - 3, L(175), ph + 6);
-		pill(win, X(925), py, L(175), ph, "Klar til backup", if (over) 0xff7fe4ff else C_CYAN, L(26));
-		draw_icon(win, icon::CLOUD_UP, X(950), py + ph / 2, C_CYAN);
+		const over = hit(win, X(905), py - 3, L(200), ph + 6);
+		pill(win, X(905), py, L(200), ph, "Klar til backup", if (over) 0xff7fe4ff else C_CYAN, 30);
+		draw_icon(win, icon::CLOUD_UP, X(905) + 17, py + ph / 2, C_CYAN);
 		do_it = over && viper::mouse_pressed(win);
 	} else {
 		const ok = synced(a);
-		pill(win, X(925), py, L(175), ph, if (ok) "Synkroniseret" else "Ikke synk.",
-			if (ok) C_GREEN else C_YELLOW, if (ok) L(26) else 0);
-		if (ok) ok_badge(win, X(941), py + ph / 2, 8);
+		pill(win, X(905), py, L(200), ph, if (ok) "Synkroniseret" else "Ikke synk.",
+			if (ok) C_GREEN else C_YELLOW, if (ok) 30 else 0);
+		if (ok) ok_badge(win, X(905) + 17, py + ph / 2, 8);
 		const over = hit(win, X(1095), py - 4, L(36), ph + 8);
 		draw_icon(win, icon::CLOUD_UP, X(1112), py + ph / 2, if (over) 0xff7fe4ff else C_CYAN);
 		do_it = over && viper::mouse_pressed(win);
@@ -776,29 +772,22 @@ fn draw_details(win: *viper::window, a: *app) void = {
 		case let img: *viper::image => viper::draw_image(win, img, bx + bw - L(150), by + L(32));
 		case null => void;
 		};
-		let lines = 0;
-		let words = strings::tokenize(g.name, " ");
-		let line: [64]u8 = [0...];
-		let n = 0z;
-		const big = 3;
+		// The name as big as it fits: scale 3 on two lines, else 2 on three.
 		const room = bw - (if (c.src.w != 0) L(170) else L(30));
-		let yy = by + L(30);
-		for (let wd => strings::next_token(&words)) {
-			const cand = if (n == 0) wd else fmt::bsprintf(line[n..], " {}", wd)!;
-			const whole = strings::fromutf8_unsafe(line[..n + len(strings::toutf8(cand))]);
-			if (n > 0 && viper::text_width(whole, big) > room) {
-				bold_big(win, bx + L(20), yy, strings::fromutf8_unsafe(line[..n]), big);
-				yy += 16 * big + 4;
-				lines += 1;
-				n = copy_utf8(line, wd);
-			} else if (n == 0) {
-				n = copy_utf8(line, wd);
-			} else {
-				n += len(strings::toutf8(cand));
-			};
-			if (lines == 2) break;
+		let lines: [3]str = [""...];
+		let scale = 3, n = wrap(g.name, room / 3, lines[..2]);
+		if (n == 0 || !fits(g.name, lines[..n]) || longest(lines[..n], 3) > room) {
+			scale = 2;
+			n = wrap(g.name, room / 2, lines);
 		};
-		if (n > 0 && lines < 3) bold_big(win, bx + L(20), yy, strings::fromutf8_unsafe(line[..n]), big);
+		const lh = 16 * scale + 6;
+		let yy = by + (bh - n: int * lh) / 2;
+		for (let i = 0z; i < n; i += 1) {
+			viper::clip(win, bx, by, bw, bh);
+			bold_big(win, bx + L(20), yy, lines[i], scale);
+			viper::noclip(win);
+			yy += lh;
+		};
 	};
 	viper::outline(win, bx, by, bw, bh, C_CYAN_DIM);
 	// The name.
@@ -1299,4 +1288,53 @@ fn draw_message(win: *viper::window, a: *app) void = {
 	const col = if (a.msg_bad) C_RED else C_CYAN;
 	neon(win, x, y, w, 32, 8, col, C_INK);
 	viper::text(win, x + 17, y + 8, m, if (a.msg_bad) 0xffffb3ba else C_TEXT);
+};
+
+// Splits s into at most len(out) lines no wider than w pixels (scale 1).
+fn wrap(s: str, w: int, out: []str) size = {
+	const b = strings::toutf8(s);
+	const maxc = w / 8;
+	let n = 0z, start = 0z;
+	for (n < len(out)) {
+		for (start < len(b) && b[start] == ' ') start += 1;
+		if (start >= len(b)) break;
+		let end = start, runes = 0, j = start;
+		for (j < len(b)) {
+			let k = j;
+			for (k < len(b) && b[k] != ' ') k += 1;
+			let wr = 0;
+			for (let c .. b[j..k]) if (c & 0xC0 != 0x80) wr += 1;
+			const need = if (end == start) wr else runes + 1 + wr;
+			if (need > maxc && end != start) break;
+			runes = need;
+			end = k;
+			j = k;
+			for (j < len(b) && b[j] == ' ') j += 1;
+			if (need > maxc) break;
+		};
+		out[n] = strings::fromutf8_unsafe(b[start..end]);
+		n += 1;
+		start = end;
+	};
+	return n;
+};
+
+// Did the lines take all of s?
+fn fits(s: str, lines: []str) bool = {
+	let n = 0z;
+	for (let l .. lines) n += len(l);
+	let words = 0z;
+	for (let c .. strings::toutf8(s)) if (c != ' ') words += 1;
+	let got = 0z;
+	for (let l .. lines) for (let c .. strings::toutf8(l)) if (c != ' ') got += 1;
+	return got == words;
+};
+
+fn longest(lines: []str, scale: int) int = {
+	let m = 0;
+	for (let l .. lines) {
+		const w = viper::text_width(l, scale);
+		if (w > m) m = w;
+	};
+	return m;
 };
