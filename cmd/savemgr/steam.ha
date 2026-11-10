@@ -226,6 +226,20 @@ fn junk_dir(n: str) bool = {
 	return false;
 };
 
+// A folder, also through a link (Wine links "Local Settings/Application
+// Data" and AppData/Local).
+fn dir_ent(dir: str, e: fs::dirent) bool = {
+	if (e.name == "." || e.name == "..") return false;
+	if (fs::isdir(e.ftype)) return true;
+	if (!fs::islink(e.ftype)) return false;
+	const p = strings::concat(dir, "/", e.name)!;
+	defer free(p);
+	match (os::stat(p)) {
+	case let st: fs::filestat => return fs::isdir(st.mode);
+	case => return false;
+	};
+};
+
 // Looks for a save folder under dir, depth levels down.
 fn find_save_dir(dir: str, depth: int) (str | void) = {
 	if (depth < 0) return;
@@ -235,13 +249,13 @@ fn find_save_dir(dir: str, depth: int) (str | void) = {
 	};
 	defer fs::dirents_free(ents);
 	for (let e .. ents) {
-		if (!fs::isdir(e.ftype) || e.name == "." || e.name == "..") continue;
+		if (!dir_ent(dir, e)) continue;
 		if (save_name(e.name)) return strings::concat(dir, "/", e.name)!;
 		// Save1, Save2 ...: the folder they are in.
 		if (slot_name(e.name) && depth < 4) return strings::dup(dir)!;
 	};
 	for (let e .. ents) {
-		if (!fs::isdir(e.ftype) || e.name == "." || e.name == ".." || junk_dir(e.name)) continue;
+		if (!dir_ent(dir, e) || junk_dir(e.name)) continue;
 		const sub = strings::concat(dir, "/", e.name)!;
 		defer free(sub);
 		match (find_save_dir(sub, depth - 1)) {
@@ -260,7 +274,7 @@ fn only_dir(dir: str) (str | void) = {
 	defer fs::dirents_free(ents);
 	let one: (str | void) = void;
 	for (let e .. ents) {
-		if (!fs::isdir(e.ftype) || e.name == "." || e.name == ".." || junk_dir(e.name)) continue;
+		if (!dir_ent(dir, e) || junk_dir(e.name)) continue;
 		if (one is str) {
 			free(one as str);
 			return;
@@ -310,7 +324,8 @@ fn guess_saves(appid: str, lib: str) (str | void) = {
 		defer free(user);
 		if (!os::exists(user)) continue;
 		for (let sub .. ["AppData/LocalLow", "AppData/Local", "AppData/Roaming",
-				"Documents", "Saved Games"]) {
+				"Local Settings/Application Data", "Application Data",
+				"Documents", "My Documents", "Saved Games"]) {
 			const d = strings::concat(user, "/", sub)!;
 			defer free(d);
 			match (find_save_dir(d, 4)) {

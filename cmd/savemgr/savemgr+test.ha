@@ -262,20 +262,26 @@ fn acf(lib: str, id: str, name: str) void = {
 	put(fmt::asprintf("{}/208670/{}/AppData/Local/BladesOfTime/profile.sav", u, p)!, "x");
 	put(fmt::asprintf("{}/208670/{}/AppData/Local/dxvk/c", u, p)!, "x");
 	put(fmt::asprintf("{}/208670/{}/Documents/Music/.keep", u, p)!, "x");
-	// Pumpkin Jack: nothing.
-	os::mkdirs(fmt::asprintf("{}/1186640/{}/AppData/Local", u, p)!, fs::mode::USER_RWX)!;
+	// Pumpkin Jack: under "Local Settings/Application Data", and AppData/Local
+	// a link to it.
+	put(fmt::asprintf("{}/1186640/{}/Local Settings/Application Data/PumpkinJack/Saved/SaveGames/GameSave.sav", u, p)!, "x");
+	os::mkdirs(fmt::asprintf("{}/1186640/{}/AppData", u, p)!, fs::mode::USER_RWX)!;
+	os::symlink("../Local Settings/Application Data", fmt::asprintf("{}/1186640/{}/AppData/Local", u, p)!)!;
+	// Nothing at all.
+	os::mkdirs(fmt::asprintf("{}/42/{}/AppData/Local", u, p)!, fs::mode::USER_RWX)!;
 	const want = [
 		("894020", "/AppData/LocalLow/Acid Nerve/DeathsDoor/SAVEDATA"),
 		("1887840", "/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure"),
 		("2407830", "/AppData/LocalLow/Spilt Milk Studios/TrashGoblin"),
 		("208670", "/AppData/Local/BladesOfTime"),
+		("1186640", "/PumpkinJack/Saved/SaveGames"),
 	];
 	for (let w .. want) {
 		const got = guess_saves(w.0, lib) as str;
 		assert(strings::hassuffix(got, w.1));
 		free(got);
 	};
-	assert(guess_saves("1186640", lib) is void);
+	assert(guess_saves("42", lib) is void);
 	assert(slot_name("Save1") && slot_name("save_02") && slot_name("Slot3") && !slot_name("Saves") && !slot_name("Save"));
 	assert(save_name("SAVEDATA") && save_name("SaveGames") && !save_name("Saved"));
 };
