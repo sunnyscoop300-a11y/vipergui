@@ -6,6 +6,7 @@
 /mastodon
 /bines
 /episoder
+/samling
 
 # Not source: downloads, packages, screenshots, games and secrets
 *.tar.gz
@@ -22,3 +23,5 @@ golden-pong
 flappy-unicorn
 /assets/episoder/skin.png
 /assets/episoder/serie.txt
+/assets/samling/skin.png
+/assets/samling/samling.txt

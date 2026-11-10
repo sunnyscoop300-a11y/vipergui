@@ -1,0 +1,38 @@
+# Eksempel på en samling til Samling: en opdigtet familie af serier og film.
+# Lav din egen som ~/.local/share/samling/samling.txt:
+#
+#   navn      samlingens navn (fremgangen gemmes under det navn)
+#   titel     vinduets titel
+#   minutter  ca. længde på et afsnit
+#   serie     NAVN | ÅR             - en serie; derefter dens sæsoner
+#   sæson     1, 2, ... eller fx Special
+#   afsnit    DATO | TITEL | BESKRIVELSE   (beskrivelsen kan udelades)
+#   film      NAVN | ÅR | DATO | MINUTTER
+#
+# Et mockup som ~/.local/share/samling/skin.png bliver baggrunden.
+
+navn Lynholdet
+titel Lynholdet Tracker
+minutter 22
+
+serie Lynholdet | 2020
+sæson 1
+afsnit 4. jan 2020 | Første lyn | Tvillingerne opdager, at de kan styre lynet.
+afsnit 11. jan 2020 | Hemmelig identitet
+afsnit 18. jan 2020 | Kaptajnens kappe
+afsnit 25. jan 2020 | Stormvarsel
+afsnit 1. feb 2020 | Skolefesten
+afsnit 8. feb 2020 | Torden på taget
+sæson 2
+afsnit 5. sep 2020 | Tilbage i dragten
+afsnit 12. sep 2020 | Den falske helt
+afsnit 19. sep 2020 | Lynkuglen
+afsnit 26. sep 2020 | Finalen
+
+film Lynholdet: Filmen | 2022 | 3. jun 2022 | 88
+
+serie Lynholdet: Nye Helte | 2024
+sæson 1
+afsnit 6. jan 2024 | En ny generation
+afsnit 13. jan 2024 | Træningslejren
+afsnit 20. jan 2024 | Ladet og klar

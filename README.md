@@ -112,6 +112,9 @@ cmd/episoder/      Episoder: episode tracker for a series you
                    describe in serie.txt (see assets/episoder/
                    eksempel.txt), with notes, stats and
                    "play next" (xdg-open)                     (make episoder)
+cmd/samling/       Samling: tracker for a family of series and
+                   films from samling.txt (see assets/samling/
+                   eksempel.txt), seasons, stats, MEGA sync   (make samling)
 assets/mastodon/   sprites + persona for the chat
 assets/crane/      Crane sprite sheet for Flappy Crane
 assets/logo/       logo + icon (SVG and PNG 16-512 px)
