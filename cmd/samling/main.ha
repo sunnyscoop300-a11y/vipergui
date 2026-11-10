@@ -123,6 +123,7 @@ export fn main() void = {
 	load(&a.p);
 	a.ent = first_series();
 	go_next(&a);
+	check_sync(&a);     // starts MEGAcmd, so the sync runs while Samling is open
 
 	for (viper::frame(win)) {
 		const dt = viper::delta(win);
