@@ -56,6 +56,10 @@ type app = struct {
 	rscroll: int,
 	verified: [256]u8,       // the restore page: 0 unknown, 1 ok, 2 broken
 	pscroll: int,            // the list on Spil-stier
+	play_gi: size,           // the game started with Start spil
+	play_phase: int,         // 0 none, 1 starting, 2 running
+	play_t: f64,             // seconds since it was started
+	play_poll: f64,          // seconds to the next look
 	armed: f64,              // a second press does it (restore, remove)
 	armed_what: int,
 	msg: [200]u8,
@@ -151,6 +155,7 @@ export fn main() void = {
 		} else {
 			next_cover(&a);
 		};
+		play_tick(&a, dt);
 	};
 };
 
@@ -420,18 +425,103 @@ fn do_restore(a: *app) void = {
 	};
 };
 
+// Start spil: with MEGA-saves on, first the newest saves from another PC,
+// then Steam starts the game, and when it closes a backup is taken (which
+// MEGA sends on to the other PCs).
 fn do_start(a: *app, gi: size) void = {
 	const g = GAMES[gi];
-	let m: [200]u8 = [0...];
-	if (running(g.proc)) {
+	let m: [240]u8 = [0...];
+	if (game_running(g.appid, g.proc)) {
 		say(a, fmt::bsprintf(m, "{} kører allerede.", g.name)!);
+		if (a.play_phase == 0) watch(a, gi, 2);
 		return;
+	};
+	if (MEGA_PLAY && len(g.dirs) > 0) {
+		// What MEGA has brought since the window opened.
+		refresh(a, gi);
+		const inf = a.infos[gi];
+		match (cloud_pick(inf.backups, inf.newest)) {
+		case let i: size =>
+			const stamp = strings::dup(inf.backups[i].stamp)!;
+			defer free(stamp);
+			let from: [64]u8 = [0...], t: [32]u8 = [0...];
+			const fl = copy_utf8(from, inf.backups[i].machine);
+			const when = inf.backups[i].when;
+			match (restore(gi, stamp)) {
+			case let e: failure =>
+				let c: [256]u8 = [0...];
+				const n = copy_utf8(c, e);
+				log(strings::fromutf8_unsafe(c[..n]));
+				complain(a, fmt::bsprintf(m, "Spillet blev ikke startet: {}", strings::fromutf8_unsafe(c[..n]))!);
+				refresh(a, gi);
+				return;
+			case let before: (str | void) =>
+				match (before) {
+				case let s: str => free(s);
+				case void => void;
+				};
+				prune(g.appid, KEEP);
+				refresh(a, gi);
+				say(a, fmt::bsprintf(m, "Fortsætter fra {} ({}). Dine saves her ligger i en backup.",
+					strings::fromutf8_unsafe(from[..fl]), stamp_text(t, when))!);
+			};
+		case void => void;
+		};
 	};
 	if (start_game(g.appid)) {
 		log(fmt::bsprintf(m, "Spil startet: {}", g.name)!);
-		say(a, fmt::bsprintf(m, "Starter {} i Steam ...", g.name)!);
+		if (a.msg_t <= 0.0 || a.msg_bad) say(a, fmt::bsprintf(m, "Starter {} i Steam ...", g.name)!);
+		watch(a, gi, 1);
 	} else {
 		complain(a, "Kunne ikke starte Steam (steam / xdg-open mangler).");
+	};
+};
+
+fn watch(a: *app, gi: size, phase: int) void = {
+	a.play_gi = gi;
+	a.play_phase = phase;
+	a.play_t = 0.0;
+	a.play_poll = 3.0;
+};
+
+// Every 3 seconds: has the game started, has it closed?
+fn play_tick(a: *app, dt: f64) void = {
+	if (a.play_phase == 0) return;
+	a.play_t += dt;
+	a.play_poll -= dt;
+	if (a.play_poll > 0.0) return;
+	a.play_poll = 3.0;
+	if (a.play_gi >= len(GAMES)) {
+		a.play_phase = 0;
+		return;
+	};
+	const g = GAMES[a.play_gi];
+	const on = game_running(g.appid, g.proc);
+	let m: [240]u8 = [0...];
+	if (a.play_phase == 1) {
+		if (on) {
+			a.play_phase = 2;
+			say(a, fmt::bsprintf(m, "{} kører. Der tages backup, når du lukker det.", g.name)!);
+		} else if (a.play_t > 300.0) {
+			a.play_phase = 0;
+		};
+		return;
+	};
+	if (on) return;
+	// Closed: a backup, for the other PCs.
+	a.play_phase = 0;
+	if (!MEGA_PLAY || len(g.dirs) == 0) return;
+	match (backup_game(a.play_gi, "efter spil")) {
+	case let s: str =>
+		free(s);
+		prune(g.appid, KEEP);
+		refresh(a, a.play_gi);
+		say(a, fmt::bsprintf(m, "Backup af {} efter spillet er klar – MEGA sender den videre.", g.name)!);
+	case let e: failure =>
+		let c: [256]u8 = [0...];
+		const n = copy_utf8(c, e);
+		log(strings::fromutf8_unsafe(c[..n]));
+		complain(a, strings::fromutf8_unsafe(c[..n]));
 	};
 };
 
@@ -901,8 +991,12 @@ fn draw_details(win: *viper::window, a: *app) void = {
 		};
 	};
 	viper::outline(win, bx, by, bw, bh, C_CYAN_DIM);
-	// Start the game.
-	if (btn(win, a, 1468, 236, 170, 40, "Start spil", icon::PLAY, style::GREEN, false)) {
+	// Start the game, or: it is being played.
+	if (a.play_phase != 0 && a.play_gi == a.sel) {
+		pill(win, X(1468), Y(240), L(170), L(32), if (a.play_phase == 2) "Spiller nu" else "Starter ...",
+			C_GREEN, 30);
+		draw_icon(win, icon::PLAY, X(1468) + 17, Y(240) + L(16), C_GREEN);
+	} else if (btn(win, a, 1468, 236, 170, 40, "Start spil", icon::PLAY, style::GREEN, false)) {
 		do_start(a, a.sel);
 	};
 	// The name.
@@ -1057,7 +1151,11 @@ fn draw_restore(win: *viper::window, a: *app) void = {
 		bold(win, x + 36, y + h / 2 - 8, fmt::bsprintf(b, "v{}", bk.version)!, C_YELLOW);
 		viper::text(win, x + 80, y + h / 2 - 8, stamp_text(t, bk.when), C_TEXT);
 		viper::text(win, x + 230, y + h / 2 - 8, size_text(z, bk.sz), C_TEXT);
-		viper::text(win, x + 320, y + h / 2 - 8, fmt::bsprintf(b, "{} filer", bk.files)!, C_DIM);
+		if (len(bk.machine) > 0 && bk.machine != machine()) {
+			text_clip(win, x + 320, y + h / 2 - 8, 85, bk.machine, C_CYAN, false);
+		} else {
+			viper::text(win, x + 320, y + h / 2 - 8, fmt::bsprintf(b, "{} filer", bk.files)!, C_DIM);
+		};
 		if (len(bk.note) > 0) viper::text(win, x + 410, y + h / 2 - 8, bk.note, C_YELLOW);
 		if (clicked(win, x, y, w, h)) a.rsel = i;
 	};
@@ -1353,7 +1451,16 @@ fn draw_settings(win: *viper::window, a: *app) void = {
 	};
 	viper::text(win, x, y + L(48), "Ældre slettes efter hver backup. \"alle\" sletter intet.", C_DIM);
 	viper::text(win, x, y + L(48) + 20, "En enkelt backup slettes under Gendan.", C_DIM);
-	if (btn(win, a, 484, 700, 260, 46, "Læs alt igen (F5)", icon::SYNC, style::CYAN, false)) {
+	// Playing with MEGA's saves.
+	const my = ky + 108;
+	bold(win, x, Y(my) + 10, "Start spil med MEGA-saves:", C_YELLOW);
+	if (btn(win, a, 870, my, 150, 36, if (MEGA_PLAY) "Til" else "Fra", void,
+			if (MEGA_PLAY) style::GREEN else style::PLAIN, false)) {
+		MEGA_PLAY = !MEGA_PLAY;
+		save_settings();
+	};
+	viper::text(win, x, Y(my) + L(48), "Nyeste saves fra en anden PC før spillet, backup efter.", C_DIM);
+	if (btn(win, a, 484, 752, 260, 46, "Læs alt igen (F5)", icon::SYNC, style::CYAN, false)) {
 		reload(a);
 		check_mega(a, true);
 	};

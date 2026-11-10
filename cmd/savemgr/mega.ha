@@ -6,6 +6,7 @@ use fs;
 use io;
 use os;
 use os::exec;
+use strconv;
 use strings;
 
 // Runs a program and returns what it wrote (stdout and stderr) and whether
@@ -95,6 +96,52 @@ fn start_game(appid: str) bool = {
 	if (spawn("setsid", "-f", "steam", url)) return true;
 	if (spawn("steam", url)) return true;
 	return spawn("xdg-open", url);
+};
+
+// Is the game running? Steam says so: on Linux the game runs under
+// Steam's "reaper SteamLaunch AppId=<appid>", in WSL Windows' registry has
+// Steam's RunningAppID. The game's program name (if given) counts too.
+fn game_running(appid: str, proc: str) bool = {
+	if (running(proc)) return true;
+	if (wsl()) {
+		match (run("reg.exe", "query", "HKCU\\Software\\Valve\\Steam", "/v", "RunningAppID")) {
+		case let r: ([]u8, bool) =>
+			defer free(r.0);
+			return running_appid(strings::fromutf8_unsafe(r.0)) == appid_num(appid);
+		case void => return false;
+		};
+	};
+	let pb: [64]u8 = [0...];
+	const pat = fmt::bsprintf(pb, "AppId={}( |$)", appid)!;
+	match (run("pgrep", "-f", pat)) {
+	case let r: ([]u8, bool) =>
+		free(r.0);
+		return r.1;
+	case void => return false;
+	};
+};
+
+fn appid_num(appid: str) u64 = match (strconv::stou64(appid)) {
+case let n: u64 => yield n;
+case => yield 0;
+};
+
+// reg.exe's answer: "    RunningAppID    REG_DWORD    0x25a3d8".
+fn running_appid(out: str) u64 = {
+	const at = match (strings::index(out, "0x")) {
+	case let i: size => yield i;
+	case void => return 0;
+	};
+	let hex = strings::sub(out, at + 2);
+	let n = 0u64;
+	for (let c .. strings::toutf8(hex)) {
+		const d: u64 = if (c >= '0' && c <= '9') c - '0'
+			else if (c >= 'a' && c <= 'f') c - 'a' + 10
+			else if (c >= 'A' && c <= 'F') c - 'A' + 10
+			else break;
+		n = n * 16 + d;
+	};
+	return if (n == 0) 0xffffffffffffffff else n;
 };
 
 // ---- MEGA ----

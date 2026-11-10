@@ -10,7 +10,8 @@
 //	  Steam/<appid>/metadata/<stamp>.txt      what is in that backup
 //	covers/<appid>.png, covers/<appid>-banner.png   pictures, if you have them
 //	settings.txt    "behold N": backups kept per game (0 = all);
-//	                "skjul <appid>": a Steam game you removed, not found again
+//	                "skjul <appid>": a Steam game you removed, not found again;
+//	                "megasaves ja|nej": Start spil plays on from MEGA's saves
 use ascii;
 use fmt;
 use fs;
@@ -341,6 +342,10 @@ fn load_settings() void = {
 			append(HIDDEN, strings::dup(strings::trim(v))!)!;
 			continue;
 		};
+		if (k == "megasaves") {
+			MEGA_PLAY = strings::trim(v) != "nej";
+			continue;
+		};
 		if (k == "behold") match (strconv::stoz(strings::trim(v))) {
 		case let n: size => KEEP = n;
 		case => void;
@@ -354,11 +359,16 @@ fn save_settings() void = {
 	let out = memio::dynamic();
 	defer io::close(&out)!;
 	fmt::fprintfln(&out, "behold {}", KEEP)!;
+	fmt::fprintfln(&out, "megasaves {}", if (MEGA_PLAY) "ja" else "nej")!;
 	for (let h .. HIDDEN) fmt::fprintfln(&out, "skjul {}", h)!;
 	match (write_file(p, memio::string(&out)!)) {
 	case => void;
 	};
 };
+
+// Start spil: first the newest saves from another PC (in MEGA), and after
+// playing a backup.
+let MEGA_PLAY: bool = true;
 
 // Steam games removed by hand, which finding Steam games skips.
 let HIDDEN: []str = [];

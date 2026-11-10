@@ -285,3 +285,51 @@ fn acf(lib: str, id: str, name: str) void = {
 	assert(slot_name("Save1") && slot_name("save_02") && slot_name("Slot3") && !slot_name("Saves") && !slot_name("Save"));
 	assert(save_name("SAVEDATA") && save_name("SaveGames") && !save_name("Saved"));
 };
+
+@test fn playing_on_another_pc() void = {
+	setup();
+	// Nebula plays and backs up.
+	os::setenv("HPO_MACHINE", "tux-ms7885")!;
+	machine_len = 0;
+	put(tp("/game/saves/slot1.sav"), "nebula level 4");
+	const s1 = backup_game(0, "efter spil") as str;
+	defer free(s1);
+	let bs = list_backups("1172380");
+	assert(bs[0].machine == "tux-ms7885");
+	// On Nebula itself nothing is fetched.
+	assert(cloud_pick(bs, 0) is void);
+	// On the WSL PC, whose saves are older: Nebula's backup.
+	machine_len = 0;
+	os::setenv("HPO_MACHINE", "Bossun")!;
+	assert(cloud_pick(bs, bs[0].when - 100) as size == 0);
+	// ... unless the saves here are newer.
+	assert(cloud_pick(bs, bs[0].when + 100) is void);
+	free_backups(bs);
+	// Restoring makes a safety copy here; that one is never played from,
+	// so Nebula still gets the right one later.
+	put(tp("/game/saves/slot1.sav"), "wsl level 2");
+	const before = restore(0, s1) as str;
+	defer free(before);
+	assert(get(tp("/game/saves/slot1.sav")) == "nebula level 4");
+	let bs = list_backups("1172380");
+	assert(bs[0].note == "før gendannelse" && bs[0].machine == "Bossun");
+	machine_len = 0;
+	os::setenv("HPO_MACHINE", "tux-ms7885")!;
+	assert(cloud_pick(bs, 0) is void);
+	free_backups(bs);
+	// WSL plays on and backs up: Nebula takes that one.
+	machine_len = 0;
+	os::setenv("HPO_MACHINE", "Bossun")!;
+	put(tp("/game/saves/slot1.sav"), "wsl level 5");
+	free(backup_game(0, "efter spil") as str);
+	machine_len = 0;
+	os::setenv("HPO_MACHINE", "tux-ms7885")!;
+	let bs = list_backups("1172380");
+	defer free_backups(bs);
+	assert(bs[cloud_pick(bs, 1) as size].machine == "Bossun");
+	machine_len = 0;
+	os::unsetenv("HPO_MACHINE")!;
+	// reg.exe's answer in WSL.
+	assert(running_appid("\r\nHKEY_CURRENT_USER\\Software\\Valve\\Steam\r\n    RunningAppID    REG_DWORD    0x25a828\r\n") == 2467880);
+	assert(running_appid("    RunningAppID    REG_DWORD    0x0\r\n") != 0);
+};

@@ -19,12 +19,14 @@ type backup = struct {
 	sz: u64,
 	files: size,
 	note: str,
+	machine: str,    // the PC it was made on ("" for old backups)
 };
 
 fn free_backups(bs: []backup) void = {
 	for (let b .. bs) {
 		free(b.stamp);
 		free(b.note);
+		free(b.machine);
 	};
 	free(bs);
 };
@@ -137,6 +139,7 @@ fn backup_game(gi: size, note: str) (str | failure) = {
 	fmt::fprintfln(&meta, "version {}", version)!;
 	fmt::fprintfln(&meta, "dato {}", t)!;
 	if (len(note) > 0) fmt::fprintfln(&meta, "note {}", note)!;
+	fmt::fprintfln(&meta, "maskine {}", machine())!;
 	let files = 0z;
 	for (let k = 0z; k < len(g.dirs); k += 1) {
 		const src = local_path(g.dirs[k]);
@@ -234,9 +237,10 @@ fn list_backups(appid: str) []backup = {
 		let b = backup {
 			stamp = strings::dup(strings::trimsuffix(e.name, ".txt"))!,
 			note = "",
+			machine = "",
 			...
 		};
-		let note = "";
+		let note = "", mach = "";
 		let it = strings::tokenize(text, "\n");
 		for (let line => strings::next_token(&it)) {
 			const (key, rest) = strings::cut(line, " ");
@@ -250,6 +254,7 @@ fn list_backups(appid: str) []backup = {
 				case => yield 0;
 				};
 			case "note" => note = rest;
+			case "maskine" => mach = rest;
 			case "fil" =>
 				let f = strings::tokenize(rest, " ");
 				strings::next_token(&f);
@@ -267,6 +272,7 @@ fn list_backups(appid: str) []backup = {
 			};
 		};
 		b.note = strings::dup(note)!;
+		b.machine = strings::dup(mach)!;
 		append(out, b)!;
 	};
 	sort::sort(out, size(backup), &newest_first)!;
@@ -517,4 +523,37 @@ fn prune(appid: str, keep: size) size = {
 		if (delete_backup(appid, bs[i].stamp) is void) n += 1;
 	};
 	return n;
+};
+
+// ---- Playing with the saves in MEGA ----
+
+let machine_buf: [128]u8 = [0...];
+let machine_len: size = 0;
+
+// This PC's name: $HPO_MACHINE, else the hostname.
+fn machine() str = {
+	if (machine_len == 0) {
+		const name = match (os::getenv("HPO_MACHINE")) {
+		case let s: str => yield strings::dup(s)!;
+		case void => yield match (read_text("/etc/hostname")) {
+			case let s: str => yield s;
+			case void => yield strings::dup("ukendt")!;
+			};
+		};
+		defer free(name);
+		machine_len = copy_utf8(machine_buf, strings::trim(name));
+	};
+	return strings::fromutf8_unsafe(machine_buf[..machine_len]);
+};
+
+// The backup to play on from: the newest one made after playing or by
+// hand (not the safety copies made before a restore), if it was made on
+// another PC and is newer than the saves here. Its index, or void.
+fn cloud_pick(bs: []backup, local_newest: i64) (size | void) = {
+	for (let i = 0z; i < len(bs); i += 1) {
+		if (bs[i].note == "før gendannelse") continue;
+		if (len(bs[i].machine) == 0 || bs[i].machine == machine()) return;
+		if (bs[i].when <= local_newest) return;
+		return i;
+	};
 };
