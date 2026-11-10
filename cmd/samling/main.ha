@@ -13,6 +13,7 @@ use ascii;
 use fmt;
 use math;
 use os;
+use strconv;
 use strings;
 use time;
 use time::date;
@@ -360,6 +361,19 @@ fn runes_in(b: []u8) int = {
 	return n;
 };
 
+// "kl. 21:07" today, else "10. nov".
+fn when_short(buf: []u8, t: i64) str = {
+	const d = date::from_instant(date::LOCAL, time::instant { sec = t, nsec = 0 });
+	const today = date::localnow();
+	const months = ["jan", "feb", "mar", "apr", "maj", "jun",
+		"jul", "aug", "sep", "okt", "nov", "dec"];
+	if (date::year(&d) == date::year(&today) && date::month(&d) == date::month(&today)
+			&& date::day(&d) == date::day(&today)) {
+		return fmt::bsprintf(buf, "kl. {:_02}:{:_02}", date::hour(&d), date::minute(&d))!;
+	};
+	return fmt::bsprintf(buf, "{}. {}", date::day(&d), months[date::month(&d) - 1])!;
+};
+
 fn when(buf: []u8, t: i64) str = {
 	const d = date::from_instant(date::LOCAL, time::instant { sec = t, nsec = 0 });
 	const today = date::localnow();
@@ -705,25 +719,31 @@ fn detail(win: *viper::window, a: *app, x: int, y: int, h: int, photo: bool) voi
 	};
 	if (photo) paint(win, a, x + 8, y + 131, 432, h - 136, x + 8);
 	const tx = X(x + 17);
-	let b: [64]u8 = [0...], sb: [32]u8 = [0...];
-	viper::text(win, tx, Y(y + 138), fmt::bsprintf(b, "{}  ·  Episode {}",
-		season_name(sb, se.label), i - se.first + 1)!, C_DIM);
-	viper::clip(win, tx, Y(y + 156), L(420), 22);
-	bold(win, tx, Y(y + 162), ep.title, C_TEXT);
-	viper::noclip(win);
-	// What it is about, or when it was on.
-	let lines: [3]str = [""...];
-	const about = if (len(ep.desc) > 0) ep.desc else "";
-	const n = wrap(about, L(420), lines);
-	for (let j = 0z; j < n && j < 2; j += 1) {
-		viper::text(win, tx, Y(y + 192) + j: int * 18, lines[j], C_DIM);
+	// One short line: season, episode, when it was on, and when you saw it.
+	let b: [64]u8 = [0...], wb: [32]u8 = [0...];
+	const sn = match (strconv::stoi(se.label)) {
+	case int => yield fmt::bsprintf(wb, "S{}", se.label)!;
+	case => yield se.label;
 	};
+	const head = fmt::bsprintf(b, "{} · E{} · {}", sn, i - se.first + 1, ep.aired)!;
+	viper::text(win, tx, Y(y + 138), head, C_DIM);
 	const seen = a.p.seen[e][i];
-	let wb: [48]u8 = [0...];
-	const info = if (seen != 0) fmt::bsprintf(b, "Sendt {}  ·  set {}", ep.aired, when(wb, seen))!
-		else fmt::bsprintf(b, "Sendt {}", ep.aired)!;
-	viper::text(win, tx, Y(y + 192) + (if (n > 0) 40 else 0), info,
-		if (seen != 0) C_GREEN else C_DIM);
+	if (seen != 0) {
+		let sb: [32]u8 = [0...];
+		const s = fmt::bsprintf(sb, "set {}", when_short(wb, seen))!;
+		const sx = X(x + 437) - viper::text_width(s, 1);
+		draw_icon(win, icon::CHECK, sx - 14, Y(y + 138) + 8, C_GREEN);
+		viper::text(win, sx, Y(y + 138), s, C_GREEN);
+	};
+	viper::clip(win, tx, Y(y + 156), L(420), 22);
+	bold(win, tx, Y(y + 160), ep.title, C_TEXT);
+	viper::noclip(win);
+	// What it is about: two lines.
+	let lines: [3]str = [""...];
+	const n = wrap(ep.desc, L(420), lines);
+	for (let j = 0z; j < n && j < 2; j += 1) {
+		viper::text(win, tx, Y(y + 188) + j: int * 18, lines[j], C_DIM);
+	};
 	if (btn(win, a, x + 16, y + h - 59, 411, 47,
 			if (seen != 0) "Markér som ikke set" else "Markér som set", icon::EYE, false)) {
 		toggle(a, e, i);
