@@ -71,3 +71,11 @@ const TEST: str = "# en kommentar\n"
 	assert(wrap("Superkalifragilistiskekspialidoes", 40, l) == 1);
 	assert(slug("Lynholdet: Nye Helte!") == "lynholdet-nye-helte");
 };
+
+@test fn mega_answers() void = {
+	let b: [64]u8 = [0...];
+	assert(last_line(b, "noget\n[2026-11-09_22-07-02.594221 cmd ERR  Not logged in.]\n\n")
+		== "Not logged in.");
+	assert(last_line(b, "Invalid email or password\n") == "Invalid email or password");
+	assert(last_line(b, "") == "intet svar");
+};

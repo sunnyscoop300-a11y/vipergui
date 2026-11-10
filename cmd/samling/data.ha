@@ -384,6 +384,40 @@ fn parse_collection(text: str) void = {
 
 // ---- MEGA ----
 
+// Runs a MEGAcmd command and returns what it wrote (stdout and stderr
+// both), or void when MEGAcmd isn't installed.
+fn mega_run(name: str, args: str...) ([]u8 | void) = {
+	let cmd = match (exec::cmd(name, args...)) {
+	case let c: exec::command => yield c;
+	case => return;
+	};
+	const (rd, wr) = exec::pipe();
+	exec::addfile(&cmd, os::stdout_file, wr)!;
+	exec::addfile(&cmd, os::stderr_file, wr)!;
+	exec::addfile(&cmd, os::stdin_file, exec::nullfd)!;
+	let proc = match (exec::start(&cmd)) {
+	case let p: exec::process => yield p;
+	case =>
+		io::close(rd)!;
+		io::close(wr)!;
+		return;
+	};
+	io::close(wr)!;
+	const data = match (io::drain(rd)) {
+	case let d: []u8 => yield d;
+	case => yield []: []u8;
+	};
+	io::close(rd)!;
+	match (exec::wait(&proc)) {
+	case => void;
+	};
+	return data;
+};
+
+def NO_MEGA: str = "MEGAcmd er ikke installeret";
+def NOT_LOGGED_IN: str = "ikke logget ind";
+def NOT_SYNCED: str = "mappen synkroniseres ikke";
+
 // Asks MEGAcmd how the save folder's sync is doing: "Synced", "Pending",
 // ..., or why we can't tell.
 fn mega_status(out: []u8) str = {
@@ -392,37 +426,72 @@ fn mega_status(out: []u8) str = {
 	case void => return "ingen mappe";
 	};
 	defer free(dir);
-	let cmd = match (exec::cmd("mega-sync")) {
-	case let c: exec::command => yield c;
-	case => return "MEGAcmd er ikke installeret";
-	};
-	const (rd, wr) = exec::pipe();
-	exec::addfile(&cmd, os::stdout_file, wr)!;
-	exec::addfile(&cmd, os::stderr_file, exec::nullfd)!;
-	exec::addfile(&cmd, os::stdin_file, exec::nullfd)!;
-	let proc = match (exec::start(&cmd)) {
-	case let p: exec::process => yield p;
-	case =>
-		io::close(rd)!;
-		io::close(wr)!;
-		return "MEGAcmd er ikke installeret";
-	};
-	io::close(wr)!;
-	const data = match (io::drain(rd)) {
+	const data = match (mega_run("mega-sync")) {
 	case let d: []u8 => yield d;
-	case => yield []: []u8;
+	case void => return NO_MEGA;
 	};
 	defer free(data);
-	io::close(rd)!;
-	match (exec::wait(&proc)) {
-	case => void;
-	};
 	const text = match (strings::fromutf8(data)) {
 	case let s: str => yield s;
 	case => return "ukendt svar";
 	};
-	if (strings::contains(text, "Not logged in")) return "ikke logget ind";
+	if (strings::contains(text, "Not logged in")) return NOT_LOGGED_IN;
 	return sync_state(out, text, dir);
+};
+
+// Logs in to MEGA. Returns void when it went well, else what MEGA said.
+fn mega_login(out: []u8, mail: str, password: str) (void | str) = {
+	const data = match (mega_run("mega-login", mail, password)) {
+	case let d: []u8 => yield d;
+	case void => return NO_MEGA;
+	};
+	defer free(data);
+	const text = strings::fromutf8_unsafe(data);
+	if (strings::contains(text, "Login complete") || strings::contains(text, "Already logged in")) {
+		return;
+	};
+	return last_line(out, text);
+};
+
+// Makes /Samling on MEGA and syncs the save folder with it.
+fn mega_setup(out: []u8) (void | str) = {
+	const dir = match (save_dir()) {
+	case let d: str => yield d;
+	case void => return "ingen mappe";
+	};
+	defer free(dir);
+	match (os::mkdirs(dir, fs::mode::USER_RWX)) {
+	case => void;
+	};
+	match (mega_run("mega-mkdir", "-p", "/Samling")) {
+	case let d: []u8 => free(d);
+	case void => return NO_MEGA;
+	};
+	const data = match (mega_run("mega-sync", dir, "/Samling")) {
+	case let d: []u8 => yield d;
+	case void => return NO_MEGA;
+	};
+	defer free(data);
+	const text = strings::fromutf8_unsafe(data);
+	if (strings::contains(text, "Added sync") || strings::contains(text, "already")) return;
+	return last_line(out, text);
+};
+
+// The last line that says something, without MEGAcmd's "[date cmd ERR".
+fn last_line(out: []u8, text: str) str = {
+	let last = "";
+	let it = strings::tokenize(text, "\n");
+	for (let line => strings::next_token(&it)) {
+		const line = strings::trim(line);
+		if (len(line) > 0) last = line;
+	};
+	match (strings::index(last, " ERR ")) {
+	case let i: size => last = strings::trim(strings::sub(last, i + 5, strings::end), ']', ' ');
+	case void => void;
+	};
+	if (len(last) == 0) last = "intet svar";
+	const n = copy_utf8(out, last);
+	return strings::fromutf8_unsafe(out[..n]);
 };
 
 // Finds dir's line in mega-sync's table and returns its STATUS column.

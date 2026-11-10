@@ -46,6 +46,9 @@ type app = struct {
 	reset_armed: f64,
 	reset_ent: size,
 	covers: [MAXENT]cover,
+	mail_tb: viper::textinput,
+	pass_tb: viper::textinput,
+	sync_checked: bool,  // the sync page has asked MEGA once
 };
 
 // A cover: the picture as found, and copies sized for a card and for
@@ -251,6 +254,14 @@ fn toggle(a: *app, e: size, i: size) void = {
 
 // Returns true to quit.
 fn keys(win: *viper::window, a: *app) bool = {
+	// Typing in a field: the keys are the field's (Esc leaves it).
+	if (a.mail_tb.focused || a.pass_tb.focused) {
+		if (viper::key_pressed(win, viper::key::ESCAPE)) {
+			a.mail_tb.focused = false;
+			a.pass_tb.focused = false;
+		};
+		return false;
+	};
 	if (viper::key_pressed(win, viper::key::ESCAPE)) return true;
 	if (viper::key_pressed(win, viper::key::TAB)) {
 		a.pg = ((a.pg: int + 1) % (page::ABOUT: int + 1)): page;
@@ -904,10 +915,13 @@ fn draw_stats(win: *viper::window, a: *app) void = {
 
 // ---- MEGA ----
 
+fn sync_status(a: *app) str = strings::fromutf8_unsafe(a.sync[..a.slen]);
+
 fn check_sync(a: *app) void = {
 	let out: [48]u8 = [0...];
 	const st = mega_status(out);
 	a.slen = copy_utf8(a.sync, st);
+	a.sync_checked = true;
 	if (st == "Synced") {
 		a.p.synced = now();
 		save(&a.p);
@@ -922,34 +936,87 @@ fn check_sync(a: *app) void = {
 	a.p.synced = keep;
 };
 
+fn do_login(a: *app) void = {
+	const mail = strings::trim(viper::textinput_str(&a.mail_tb));
+	const pass = viper::textinput_str(&a.pass_tb);
+	if (len(mail) == 0 || len(pass) == 0) {
+		say(a, "Skriv både mail og adgangskode.");
+		return;
+	};
+	say(a, "Logger ind på MEGA ...");
+	let out: [120]u8 = [0...];
+	const r = mega_login(out, mail, pass);
+	// The password is not kept.
+	a.pass_tb.buf = [0...];
+	a.pass_tb.length = 0;
+	a.pass_tb.focused = false;
+	match (r) {
+	case void => check_sync(a);
+	case let e: str =>
+		let b: [160]u8 = [0...];
+		say(a, fmt::bsprintf(b, "MEGA: {}", e)!);
+	};
+};
+
+fn do_setup(a: *app) void = {
+	let out: [120]u8 = [0...];
+	match (mega_setup(out)) {
+	case void => check_sync(a);
+	case let e: str =>
+		let b: [160]u8 = [0...];
+		say(a, fmt::bsprintf(b, "MEGA: {}", e)!);
+	};
+};
+
+// A text field that shows stars.
+fn password_box(win: *viper::window, tb: *viper::textinput, x: int, y: int, w: int) bool = {
+	const enter = viper::textbox(win, tb, x, y, w, "Adgangskode");
+	if (tb.length == 0) return enter;
+	viper::rect(win, x + 1, y + 1, w - 2, 28, win.theme.widget_hot);
+	let n = 0;
+	for (let c .. tb.buf[..tb.length]) if (c & 0xC0 != 0x80) n += 1;
+	for (let i = 0; i < n && 8 + i * 10 < w - 16; i += 1) viper::circle(win, x + 12 + i * 10, y + 15, 3, C_TEXT);
+	return enter;
+};
+
 fn draw_sync(win: *viper::window, a: *app) void = {
 	glass(win, X(260), Y(295), L(1253), L(620), 12, 0xff0a1648);
+	if (!a.sync_checked) check_sync(a);
 	const x = X(290);
 	let b: [256]u8 = [0...];
-	bold(win, x, Y(320), "Fremgangen gemmes her, og MEGAcmd holder mappen i sync:", C_TEXT);
+	bold(win, x, Y(320), "Fremgangen gemmes i denne mappe, og MEGA holder den i sync:", C_TEXT);
 	const dir = match (save_dir()) {
 	case let d: str => yield d;
 	case void => yield strings::dup("?")!;
 	};
 	defer free(dir);
 	viper::text(win, x + 20, Y(350), dir, C_YEL_HI);
-	const status = if (a.slen > 0) strings::fromutf8_unsafe(a.sync[..a.slen]) else "ikke tjekket endnu";
-	viper::text(win, x, Y(395), fmt::bsprintf(b, "Status: {}", status)!,
-		if (status == "Synced") C_GREEN else C_DIM);
-	if (btn(win, a, 290, 430, 260, 50, "Tjek nu", icon::CLOUD, false)) check_sync(a);
-	const how = [
-		"Første gang på en maskine:",
-		"  mega-cmd",
-		"  login din-mail",
-		fmt::asprintf("  sync {} /Samling", dir)!,
-		"  exit",
-		"Læg samling.txt og skin.png i mappen, så følger de med til",
-		"dine andre maskiner.",
-	];
-	defer free(how[3]);
-	for (let i = 0z; i < len(how); i += 1) {
-		viper::text(win, x, Y(520) + i: int * 22, how[i], if (i == 0 || i >= 5) C_DIM else C_TEXT);
+	const st = sync_status(a);
+	const good = st == "Synced";
+	if (good) ok_badge(win, x + 11, Y(400) + 8) else draw_icon(win, icon::CLOUD, x + 11, Y(400) + 8, C_DIM);
+	bold(win, x + 30, Y(400), fmt::bsprintf(b, "Status: {}", st)!, if (good) C_GREEN else C_TEXT);
+	const y = Y(445);
+	if (st == NO_MEGA) {
+		viper::text(win, x, y, "Installér MEGAcmd først (hent .deb'en fra mega.io/cmd):", C_DIM);
+		viper::text(win, x + 20, y + 22, "sudo apt install ./megacmd-*.deb", C_TEXT);
+		if (btn(win, a, 290, 530, 260, 50, "Tjek igen", icon::CLOUD, false)) check_sync(a);
+	} else if (st == NOT_LOGGED_IN) {
+		bold(win, x, y, "Log ind på MEGA:", C_TEXT);
+		viper::textbox(win, &a.mail_tb, x, y + 26, L(520), "Mail");
+		const enter = password_box(win, &a.pass_tb, x, y + 64, L(520));
+		if (btn(win, a, 290, 590, 260, 50, "Log ind", icon::CLOUD, false) || enter) do_login(a);
+		viper::text(win, x + L(540), y + 33, "Adgangskoden bliver ikke gemt;", C_DIM);
+		viper::text(win, x + L(540), y + 55, "MEGAcmd husker selv, at du er logget ind.", C_DIM);
+	} else if (st == NOT_SYNCED) {
+		viper::text(win, x, y, "Mappen er ikke sat op hos MEGA endnu. Så laves /Samling på MEGA,", C_DIM);
+		viper::text(win, x, y + 20, "og mappen her holdes i sync med den:", C_DIM);
+		if (btn(win, a, 290, 530, 330, 50, "Opsæt synkronisering", icon::CLOUD, false)) do_setup(a);
+	} else {
+		viper::text(win, x, y, "MEGA holder mappen i sync i baggrunden, også når Samling er lukket.", C_DIM);
+		if (btn(win, a, 290, 520, 260, 50, "Tjek nu", icon::CLOUD, false)) check_sync(a);
 	};
+	viper::text(win, x, Y(800), "Læg samling.txt, skin.png og cover-*.png i mappen, så følger de", C_DIM);
+	viper::text(win, x, Y(800) + 20, "med til dine andre maskiner.", C_DIM);
 };
 
 fn draw_footer(win: *viper::window, a: *app) void = {
@@ -963,7 +1030,13 @@ fn draw_footer(win: *viper::window, a: *app) void = {
 		draw_icon(win, icon::CLOUD, X(283), Y(978), C_DIM);
 		viper::text(win, X(313), Y(978) - 8, "Ikke synkroniseret endnu (MEGA.nz)", C_DIM);
 	};
-	if (btn(win, a, 1250, 955, 252, 53, "Synkronisér nu", icon::CLOUD, true)) check_sync(a);
+	if (btn(win, a, 1250, 955, 252, 53, "Synkronisér nu", icon::CLOUD, true)) {
+		check_sync(a);
+		// Something to set up: the sync page shows how.
+		if (sync_status(a) != "Synced" && sync_status(a) != "Pending" && sync_status(a) != "Syncing") {
+			a.pg = page::SYNC;
+		};
+	};
 };
 
 // ---- Settings and about ----
