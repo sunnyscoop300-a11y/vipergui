@@ -242,3 +242,40 @@ fn acf(lib: str, id: str, name: str) void = {
 	add_game("3525790", "PAW") as void;
 	assert(!hidden("3525790"));
 };
+
+@test fn guessing_save_folders() void = {
+	setup();
+	os::setenv("HOME", tp("/home"))!;
+	const lib = tp("/media/lib");
+	const u = fmt::asprintf("{}/steamapps/compatdata", lib)!;
+	const p = "pfx/drive_c/users/steamuser";
+	// Death's Door: SAVEDATA, next to Unity.
+	put(fmt::asprintf("{}/894020/{}/AppData/LocalLow/Acid Nerve/DeathsDoor/Unity/x", u, p)!, "x");
+	put(fmt::asprintf("{}/894020/{}/AppData/LocalLow/Acid Nerve/DeathsDoor/SAVEDATA/s", u, p)!, "x");
+	put(fmt::asprintf("{}/894020/{}/AppData/Local/dxvk/c", u, p)!, "x");
+	// Another Crab's Treasure: Save1 -> its folder.
+	put(fmt::asprintf("{}/1887840/{}/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure/Save1/s", u, p)!, "x");
+	// Trash Goblin: Unity, no save name.
+	put(fmt::asprintf("{}/2407830/{}/AppData/LocalLow/Spilt Milk Studios/TrashGoblin/data.json", u, p)!, "x");
+	// Blades of Time: Local/<game>, beside dxvk.
+	put(fmt::asprintf("{}/208670/{}/AppData/Local/BladesOfTime/_debuginfo/x", u, p)!, "x");
+	put(fmt::asprintf("{}/208670/{}/AppData/Local/BladesOfTime/profile.sav", u, p)!, "x");
+	put(fmt::asprintf("{}/208670/{}/AppData/Local/dxvk/c", u, p)!, "x");
+	put(fmt::asprintf("{}/208670/{}/Documents/Music/.keep", u, p)!, "x");
+	// Pumpkin Jack: nothing.
+	os::mkdirs(fmt::asprintf("{}/1186640/{}/AppData/Local", u, p)!, fs::mode::USER_RWX)!;
+	const want = [
+		("894020", "/AppData/LocalLow/Acid Nerve/DeathsDoor/SAVEDATA"),
+		("1887840", "/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure"),
+		("2407830", "/AppData/LocalLow/Spilt Milk Studios/TrashGoblin"),
+		("208670", "/AppData/Local/BladesOfTime"),
+	];
+	for (let w .. want) {
+		const got = guess_saves(w.0, lib) as str;
+		assert(strings::hassuffix(got, w.1));
+		free(got);
+	};
+	assert(guess_saves("1186640", lib) is void);
+	assert(slot_name("Save1") && slot_name("save_02") && slot_name("Slot3") && !slot_name("Saves") && !slot_name("Save"));
+	assert(save_name("SAVEDATA") && save_name("SaveGames") && !save_name("Saved"));
+};
