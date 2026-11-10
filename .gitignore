@@ -7,6 +7,7 @@
 /bines
 /episoder
 /samling
+/savemgr
 
 # Not source: downloads, packages, screenshots, games and secrets
 *.tar.gz

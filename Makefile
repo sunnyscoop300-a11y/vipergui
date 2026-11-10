@@ -8,7 +8,7 @@ else
 FLAGS = -lSDL2
 endif
 
-all: vipergui-demo flappy-crane mastodon bines jade episoder samling
+all: vipergui-demo flappy-crane mastodon bines jade episoder samling savemgr
 
 vipergui-demo: viper/*.ha cmd/demo/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/demo/
@@ -34,6 +34,9 @@ episoder: viper/*.ha cmd/episoder/*.ha
 samling: viper/*.ha cmd/samling/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/samling/
 
+savemgr: viper/*.ha cmd/savemgr/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/savemgr/
+
 jade: viper/*.ha cmd/jade/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/jade/
 
@@ -58,9 +61,10 @@ test:
 	$(HARE) test -T +nosdl cmd/jade
 	$(HARE) test -T +nosdl cmd/episoder
 	$(HARE) test -T +nosdl cmd/samling
+	$(HARE) test -T +nosdl cmd/savemgr
 
 clean:
-	rm -f vipergui-demo flappy-crane mastodon bines jade episoder samling
+	rm -f vipergui-demo flappy-crane mastodon bines jade episoder samling savemgr
 
 # ---- Desktop integration (KDE/GNOME menu + icons), per user, no sudo ----
 APPS = $(HOME)/.local/share/applications
@@ -77,6 +81,7 @@ desktop: all
 		cp assets/jade/jade-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/jade.png; \
 		cp assets/episoder/episoder-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/episoder.png; \
 		cp assets/samling/samling-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/samling.png; \
+		cp assets/savemgr/savemgr-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/savemgr.png; \
 	done
 	@mkdir -p $(ICONS)/scalable/apps
 	@cp assets/logo/vipergui-icon.svg $(ICONS)/scalable/apps/vipergui.svg
@@ -87,6 +92,7 @@ desktop: all
 	$(call entry,jade,Jade,Den jadegrønne slange - 3D snake,jade,Game;ArcadeGame;)
 	$(call entry,episoder,Episoder,Episode tracker til din serie,episoder,AudioVideo;Video;)
 	$(call entry,samling,Samling,Tracker til en familie af serier og film,samling,AudioVideo;Video;)
+	$(call entry,savemgr,HPO Steam Save Manager,Backup og sync af Steam-saves med MEGA,savemgr,Game;Utility;)
 	@command -v update-desktop-database >/dev/null && update-desktop-database $(APPS) || true
 	@command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
 	@echo "Installed. Look for the apps in your menu."
@@ -100,9 +106,9 @@ define entry
 endef
 
 undesktop:
-	rm -f $(APPS)/vipergui-demo.desktop $(APPS)/flappy-crane.desktop $(APPS)/mastodon.desktop $(APPS)/bines.desktop $(APPS)/jade.desktop $(APPS)/episoder.desktop $(APPS)/samling.desktop
+	rm -f $(APPS)/vipergui-demo.desktop $(APPS)/flappy-crane.desktop $(APPS)/mastodon.desktop $(APPS)/bines.desktop $(APPS)/jade.desktop $(APPS)/episoder.desktop $(APPS)/samling.desktop $(APPS)/savemgr.desktop
 	for s in $(SIZES); do \
-		rm -f $(ICONS)/$${s}x$${s}/apps/vipergui.png $(ICONS)/$${s}x$${s}/apps/flappy-crane.png $(ICONS)/$${s}x$${s}/apps/bines.png $(ICONS)/$${s}x$${s}/apps/jade.png $(ICONS)/$${s}x$${s}/apps/episoder.png $(ICONS)/$${s}x$${s}/apps/samling.png; \
+		rm -f $(ICONS)/$${s}x$${s}/apps/vipergui.png $(ICONS)/$${s}x$${s}/apps/flappy-crane.png $(ICONS)/$${s}x$${s}/apps/bines.png $(ICONS)/$${s}x$${s}/apps/jade.png $(ICONS)/$${s}x$${s}/apps/episoder.png $(ICONS)/$${s}x$${s}/apps/samling.png $(ICONS)/$${s}x$${s}/apps/savemgr.png; \
 	done
 	rm -f $(ICONS)/scalable/apps/vipergui.svg
 
