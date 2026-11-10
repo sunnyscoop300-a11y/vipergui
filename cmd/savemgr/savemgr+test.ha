@@ -194,3 +194,51 @@ fn setup() void = {
 	load_settings();
 	assert(KEEP == 5);
 };
+
+fn acf(lib: str, id: str, name: str) void = {
+	put(fmt::asprintf("{}/steamapps/appmanifest_{}.acf", lib, id)!, fmt::asprintf(
+		"\"AppState\"\n{{\n\t\"appid\"\t\t\"{}\"\n\t\"name\"\t\t\"{}\"\n\t\"installdir\"\t\t\"x\"\n}}\n", id, name)!);
+};
+
+@test fn finding_steam_games() void = {
+	setup();
+	free_games();
+	save_games();
+	os::setenv("HOME", tp("/home"))!;
+	const root = tp("/home/.steam/debian-installation");
+	const usb = tp("/media/tux/MONOHOSHIZAO21/SteamLibrary");
+	put(strings::concat(root, "/steamapps/libraryfolders.vdf")!, fmt::asprintf(
+		"\"libraryfolders\"\n{{\n\t\"0\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n"
+		"\t\"1\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t\t\"apps\"\n\t\t{{\n\t\t\t\"2467880\"\t\t\"1\"\n\t\t}}\n\t}}\n}}\n",
+		root, usb)!);
+	acf(root, "2224740", "DreamWorks All-Star Kart Racing");
+	acf(root, "1493710", "Proton Experimental");
+	acf(usb, "2467880", "Fading Echo");
+	acf(usb, "3525790", "PAW Patrol: Dino World");
+	// Saves: Unreal in the Proton prefix on the USB disk, Steam Cloud for one.
+	put(fmt::asprintf("{}/steamapps/compatdata/2467880/pfx/drive_c/users/steamuser/AppData/Local/FadingEcho/Saved/SaveGames/s.sav", usb)!, "x");
+	put(fmt::asprintf("{}/steamapps/compatdata/2467880/pfx/drive_c/users/steamuser/AppData/Local/Microsoft/Saves/no.sav", usb)!, "x");
+	put(strings::concat(root, "/userdata/12345/2224740/remote/a.sav")!, "x");
+	const libs = steam_libraries();
+	assert(len(libs) == 2);
+	strings::freeall(libs);
+	const fl = installed_games();
+	assert(len(fl) == 3 && fl[0].name == "DreamWorks All-Star Kart Racing" && fl[1].name == "Fading Echo");
+	free_found(fl);
+	const (added, with_dir) = import_steam();
+	assert(added == 3 && with_dir == 2);
+	const i = find_game("2467880") as size;
+	assert(strings::hassuffix(GAMES[i].dirs[0], "/AppData/Local/FadingEcho/Saved/SaveGames"));
+	assert(strings::hasprefix(GAMES[i].dirs[0], "/tmp/"));
+	const j = find_game("2224740") as size;
+	assert(GAMES[j].dirs[0] == "~/.steam/debian-installation/userdata/12345/2224740/remote");
+	assert(len(GAMES[find_game("3525790") as size].dirs) == 0);
+	// Again: nothing new. Removed: not found again, until added by hand.
+	assert(import_steam().0 == 0);
+	remove_game(find_game("3525790") as size);
+	load_settings();
+	assert(hidden("3525790"));
+	assert(import_steam().0 == 0 && find_game("3525790") is void);
+	add_game("3525790", "PAW") as void;
+	assert(!hidden("3525790"));
+};

@@ -9,11 +9,13 @@
 //	  Steam/<appid>/backups/<stamp>/<n>/...   the files of save folder n
 //	  Steam/<appid>/metadata/<stamp>.txt      what is in that backup
 //	covers/<appid>.png, covers/<appid>-banner.png   pictures, if you have them
-//	settings.txt    "behold N": backups kept per game (0 = all)
+//	settings.txt    "behold N": backups kept per game (0 = all);
+//	                "skjul <appid>": a Steam game you removed, not found again
 use ascii;
 use fmt;
 use fs;
 use io;
+use memio;
 use os;
 use strconv;
 use strings;
@@ -195,6 +197,7 @@ fn add_game(appid: str, name: str) (void | str) = {
 		if (!ascii::isdigit(r: rune)) return "AppID er kun tal";
 	};
 	if (find_game(appid) is size) return "spillet findes allerede";
+	set_hidden(appid, false);
 	append(GAMES, game {
 		appid = strings::dup(appid)!,
 		name = strings::dup(if (len(name) > 0) name else appid)!,
@@ -204,8 +207,10 @@ fn add_game(appid: str, name: str) (void | str) = {
 	save_games();
 };
 
+// Removes a game; a Steam game isn't found again until added by hand.
 fn remove_game(i: size) void = {
 	const g = GAMES[i];
+	set_hidden(g.appid, true);
 	free(g.appid);
 	free(g.name);
 	strings::freeall(g.dirs);
@@ -322,6 +327,8 @@ const KEEP_CHOICES: [_]size = [0, 3, 5, 10, 20, 50];
 fn load_settings() void = {
 	const p = path("settings.txt");
 	defer free(p);
+	strings::freeall(HIDDEN);
+	HIDDEN = [];
 	const text = match (read_text(p)) {
 	case let s: str => yield s;
 	case void => return;
@@ -330,6 +337,10 @@ fn load_settings() void = {
 	let it = strings::tokenize(text, "\n");
 	for (let line => strings::next_token(&it)) {
 		const (k, v) = strings::cut(strings::trim(line), " ");
+		if (k == "skjul" && len(strings::trim(v)) > 0) {
+			append(HIDDEN, strings::dup(strings::trim(v))!)!;
+			continue;
+		};
 		if (k == "behold") match (strconv::stoz(strings::trim(v))) {
 		case let n: size => KEEP = n;
 		case => void;
@@ -340,8 +351,33 @@ fn load_settings() void = {
 fn save_settings() void = {
 	const p = path("settings.txt");
 	defer free(p);
-	let b: [64]u8 = [0...];
-	match (write_file(p, fmt::bsprintf(b, "behold {}\n", KEEP)!)) {
+	let out = memio::dynamic();
+	defer io::close(&out)!;
+	fmt::fprintfln(&out, "behold {}", KEEP)!;
+	for (let h .. HIDDEN) fmt::fprintfln(&out, "skjul {}", h)!;
+	match (write_file(p, memio::string(&out)!)) {
 	case => void;
+	};
+};
+
+// Steam games removed by hand, which finding Steam games skips.
+let HIDDEN: []str = [];
+
+fn hidden(appid: str) bool = {
+	for (let h .. HIDDEN) if (h == appid) return true;
+	return false;
+};
+
+fn set_hidden(appid: str, on: bool) void = {
+	for (let i = 0z; i < len(HIDDEN); i += 1) if (HIDDEN[i] == appid) {
+		if (on) return;
+		free(HIDDEN[i]);
+		delete(HIDDEN[i]);
+		save_settings();
+		return;
+	};
+	if (on) {
+		append(HIDDEN, strings::dup(appid)!)!;
+		save_settings();
 	};
 };

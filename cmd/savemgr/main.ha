@@ -51,10 +51,11 @@ type app = struct {
 	skin: bool,
 	bg: viper::image,
 	search: viper::textinput,
-	checked: [256]bool,      // the backup page's choice
+	checked: [1024]bool,     // the backup page's choice
 	rsel: size,              // the restore page's backup
 	rscroll: int,
 	verified: [256]u8,       // the restore page: 0 unknown, 1 ok, 2 broken
+	pscroll: int,            // the list on Spil-stier
 	armed: f64,              // a second press does it (restore, remove)
 	armed_what: int,
 	msg: [200]u8,
@@ -161,6 +162,13 @@ fn reload(a: *app) void = {
 	defer free(old);
 	load_games();
 	load_settings();
+	// New Steam games, from every library.
+	const (added, with_dir) = import_steam();
+	if (added > 0) {
+		let m: [160]u8 = [0...];
+		say(a, fmt::bsprintf(m, "{} Steam-spil fundet ({} med save-mappe). Tjek resten under Spil-stier.",
+			added, with_dir)!);
+	};
 	for (let i .. a.infos) free_backups(i.backups);
 	free(a.infos);
 	a.infos = [];
@@ -702,9 +710,13 @@ fn draw_library(win: *viper::window, a: *app) void = {
 	draw_icon(win, icon::DISC, X(497), Y(132), C_TEXT);
 	let b: [64]u8 = [0...];
 	let nchk = 0;
-	for (let i = 0z; i < len(GAMES); i += 1) if (a.checked[i]) nchk += 1;
-	const title = if (backup_page) fmt::bsprintf(b, "Backup ({} valgt)", nchk)!
+	for (let i = 0z; i < len(GAMES) && i < len(a.checked); i += 1) if (a.checked[i]) nchk += 1;
+	let title = if (backup_page) fmt::bsprintf(b, "Backup ({} valgt)", nchk)!
 		else fmt::bsprintf(b, "Mine Steam-spil ({})", len(GAMES))!;
+	if (viper::text_width(title, 2) > X(950) - X(534)) {
+		title = if (backup_page) fmt::bsprintf(b, "Backup ({})", nchk)!
+			else fmt::bsprintf(b, "Steam-spil ({})", len(GAMES))!;
+	};
 	bold2(win, X(534), Y(132) - 16, title, C_TEXT);
 	// The search box, or on the backup page: tick all / none.
 	paint(win, a, 958, 105, 214, 54, 958);
@@ -712,7 +724,7 @@ fn draw_library(win: *viper::window, a: *app) void = {
 		const all = nchk == len(GAMES): int && nchk > 0;
 		if (btn(win, a, 962, 110, 204, 45, if (all) "Fravælg alle" else "Vælg alle",
 				icon::CHECK, style::CYAN, false)) {
-			for (let i = 0z; i < len(GAMES); i += 1) a.checked[i] = !all;
+			for (let i = 0z; i < len(GAMES) && i < len(a.checked); i += 1) a.checked[i] = !all;
 		};
 	} else {
 		neon(win, X(962), Y(110), L(204), L(45), 8, C_CYAN_DIM, C_FIELD);
@@ -755,7 +767,7 @@ fn card(win: *viper::window, a: *app, gi: size, y: int, backup_page: bool) void 
 	if (backup_page) {
 		viper::round_rect(win, sx - 10, sy - 10, 20, 20, 4, C_CYAN);
 		viper::round_rect(win, sx - 8, sy - 8, 16, 16, 3, C_FIELD);
-		if (a.checked[gi]) draw_icon(win, icon::CHECK, sx, sy, C_CYAN);
+		if (gi < len(a.checked) && a.checked[gi]) draw_icon(win, icon::CHECK, sx, sy, C_CYAN);
 	} else {
 		draw_icon(win, if (g.star) icon::STAR_FULL else icon::STAR, sx, sy,
 			if (g.star) C_YELLOW else C_DIM);
@@ -763,7 +775,7 @@ fn card(win: *viper::window, a: *app, gi: size, y: int, backup_page: bool) void 
 	const star_hit = clicked(win, sx - 16, sy - 16, 32, 32);
 	if (star_hit) {
 		if (backup_page) {
-			a.checked[gi] = !a.checked[gi];
+			if (gi < len(a.checked)) a.checked[gi] = !a.checked[gi];
 		} else {
 			GAMES[gi].star = !GAMES[gi].star;
 			save_games();
@@ -961,7 +973,7 @@ fn field(win: *viper::window, x: int, y: int, w: int, h: int, s: str) void = {
 fn backup_button(a: *app) void = {
 	if (a.pg == page::BACKUP) {
 		let n = 0, ok = 0;
-		for (let i = 0z; i < len(GAMES); i += 1) {
+		for (let i = 0z; i < len(GAMES) && i < len(a.checked); i += 1) {
 			if (!a.checked[i]) continue;
 			n += 1;
 			if (do_backup(a, i)) ok += 1;
@@ -1170,7 +1182,7 @@ fn draw_paths(win: *viper::window, a: *app) void = {
 	center_header(win, a, "Spil-stier", icon::FOLDER);
 	const x = X(484);
 	// Add a game.
-	bold(win, x, Y(178), "Tilføj spil (AppID står i spillets Steam-butiksadresse):", C_TEXT);
+	bold(win, x, Y(178), "Steam-spil findes selv (F5). Tilføj andre med AppID:", C_TEXT);
 	viper::textbox(win, &a.tb_appid, x, Y(178) + 24, L(150), "AppID");
 	viper::textbox(win, &a.tb_name, x + L(160), Y(178) + 24, L(300), "Navn");
 	if (btn(win, a, 960, 202, 190, 42, "Tilføj spil", icon::GAMEPAD, style::GREEN, false)) {
@@ -1195,8 +1207,13 @@ fn draw_paths(win: *viper::window, a: *app) void = {
 	if (len(GAMES) == 0) return;
 	// The games, left; the chosen one's folders, right.
 	const lx = x, ly = Y(276), lw = L(220);
-	for (let r = 0z; r < len(a.view) && r < 11; r += 1) {
-		const gi = a.view[r];
+	def PROWS: int = 10;
+	if (hit(win, lx, ly, lw, L(44) * PROWS)) a.pscroll -= viper::wheel(win);
+	const pmax = if (len(a.view): int > PROWS) len(a.view): int - PROWS else 0;
+	if (a.pscroll > pmax) a.pscroll = pmax;
+	if (a.pscroll < 0) a.pscroll = 0;
+	for (let r = 0z; r < PROWS: size && a.pscroll: size + r < len(a.view); r += 1) {
+		const gi = a.view[a.pscroll: size + r];
 		const y = ly + r: int * L(44);
 		const on = gi == a.sel;
 		viper::round_rect(win, lx, y, lw, L(38), 6, if (on) C_YELLOW else 0xff0d1d44);
@@ -1269,10 +1286,21 @@ fn draw_paths(win: *viper::window, a: *app) void = {
 			a.armed = 0.0;
 			a.sel = 0;
 			reload(a);
-			say(a, "Spillet er fjernet. Dets backups er der stadig.");
+			say(a, "Spillet er fjernet (og findes ikke igen). Dets backups er der stadig.");
 		} else {
 			a.armed = 4.0;
 			a.armed_what = 2;
+		};
+	};
+	// Games removed by hand can come back.
+	if (len(HIDDEN) > 0) {
+		let hb: [48]u8 = [0...];
+		if (btn(win, a, 720, 760, 230, 42, fmt::bsprintf(hb, "Vis fjernede ({})", len(HIDDEN))!,
+				void, style::CYAN, false)) {
+			strings::freeall(HIDDEN);
+			HIDDEN = [];
+			save_settings();
+			reload(a);
 		};
 	};
 };
