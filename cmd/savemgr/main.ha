@@ -69,6 +69,8 @@ type app = struct {
 	store_f: f64,
 	last_sync: i64,
 	mega_in: int,            // frames until MEGA is asked
+	cover_q: size,           // the next game to find covers for
+	cover_now: bool,         // ... and it is found this frame
 	tb_appid: viper::textinput,
 	tb_name: viper::textinput,
 	tb_dir: viper::textinput,
@@ -144,6 +146,8 @@ export fn main() void = {
 		if (a.mega_in > 0) {
 			a.mega_in -= 1;
 			if (a.mega_in == 0) check_mega(&a, false);
+		} else {
+			next_cover(&a);
 		};
 	};
 };
@@ -161,6 +165,9 @@ fn reload(a: *app) void = {
 	for (let i = 0z; i < len(GAMES); i += 1) append(a.infos, read_info(i))!;
 	free_covers(a);
 	for (let g .. GAMES) append(a.covers, load_cover(g.appid))!;
+	a.cover_q = 0;
+	a.cover_now = false;
+	offline = false;
 	strings::freeall(a.logs);
 	a.logs = log_tail(300);
 	a.sel = 0;
@@ -225,6 +232,36 @@ fn load_cover(appid: str) cover = {
 	case viper::imgerror => void;
 	};
 	return c;
+};
+
+// One game a frame: games without covers get them from Steam. The frame
+// before says so, as it can take a moment.
+fn next_cover(a: *app) void = {
+	for (a.cover_q < len(GAMES)) {
+		const gi = a.cover_q;
+		const c = &a.covers[gi];
+		if (c.src.w != 0 && c.banner.w != 0) {
+			a.cover_q += 1;
+			continue;
+		};
+		if (!a.cover_now) {
+			let b: [200]u8 = [0...];
+			say(a, fmt::bsprintf(b, "Henter cover: {}", GAMES[gi].name)!);
+			a.cover_now = true;
+			return;
+		};
+		a.cover_now = false;
+		a.cover_q += 1;
+		if (fetch_covers(GAMES[gi].appid)) {
+			const n = load_cover(GAMES[gi].appid);
+			if (c.src.w != 0) viper::image_free(&c.src);
+			if (c.card.w != 0) viper::image_free(&c.card);
+			if (c.banner.w != 0) viper::image_free(&c.banner);
+			*c = n;
+		};
+		a.msg_t = 0.0;
+		return;
+	};
 };
 
 fn free_covers(a: *app) void = {
@@ -746,7 +783,17 @@ fn card_cover(a: *app, gi: size, w: int, h: int) nullable *viper::image = {
 	if (c.src.w == 0) return null;
 	if (c.card.w != w || c.card.h != h) {
 		if (c.card.w != 0) viper::image_free(&c.card);
-		c.card = viper::resize(&c.src, w, h)!;
+		// Fill the box without stretching: cut the picture to its shape,
+		// keeping the top (where a poster has its title).
+		let cw = c.src.w, ch = c.src.w * h / w;
+		if (ch > c.src.h) {
+			ch = c.src.h;
+			cw = c.src.h * w / h;
+		};
+		const cy = if (ch < c.src.h) (c.src.h - ch) / 4 else 0;
+		let cut = viper::crop(&c.src, (c.src.w - cw) / 2, cy, cw, ch)!;
+		c.card = viper::resize(&cut, w, h)!;
+		viper::image_free(&cut);
 	};
 	return &c.card;
 };
@@ -1190,9 +1237,9 @@ fn draw_settings(win: *viper::window, a: *app) void = {
 	};
 	y += 16;
 	const tips = [
-		"Covers skal være PNG. Fra Steams egen cache (JPG) kan de laves sådan:",
-		"  convert 1172380_library_600x900.jpg ~/.local/share/hpo-saves/covers/1172380.png",
-		"Steams cache ligger i C:\\Program Files (x86)\\Steam\\appcache\\librarycache.",
+		"Covers hentes selv fra Steams cache (appcache/librarycache) eller fra",
+		"Steams server (curl), og laves til PNG med ImageMagick eller ffmpeg.",
+		"Dine egne PNG'er i covers/ bruges i stedet, hvis de er der.",
 		"",
 		"Gamle backups slettes ikke af programmet; slet dem i Saves-mappen, hvis",
 		"der bliver for mange (metadata/<tid>.txt og backups/<tid>/ hører sammen).",

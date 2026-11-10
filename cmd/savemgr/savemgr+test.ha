@@ -139,3 +139,17 @@ fn setup() void = {
 	assert(sync_state(b, "ID LOCALPATH\n", "/x") == NOT_SYNCED);
 	assert(last_line(b, "x\n[2026 cmd ERR  Not logged in.]\n") == "Not logged in.");
 };
+
+@test fn steam_cache() void = {
+	setup();
+	os::setenv("HOME", tp("/home"))!;
+	const lc = tp("/home/.steam/steam/appcache/librarycache");
+	put(strings::concat(lc, "/242550/a1b2/library_hero.jpg")!, "hero");
+	put(strings::concat(lc, "/242550/library_600x900_2x.jpg")!, "poster");
+	put(strings::concat(lc, "/229540_library_600x900.jpg")!, "old");
+	assert(strings::hassuffix(find_cached("242550", "library_hero.jpg") as str, "/242550/a1b2/library_hero.jpg"));
+	assert(strings::hassuffix(find_cached("242550", "library_600x900.jpg") as str, "/library_600x900_2x.jpg"));
+	assert(strings::hassuffix(find_cached("229540", "library_600x900.jpg") as str, "/229540_library_600x900.jpg"));
+	assert(find_cached("229540", "header.jpg") is void);
+	assert(find_cached("1", "header.jpg") is void);
+};
