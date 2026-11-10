@@ -57,10 +57,16 @@ const TEST: str = "# en kommentar\n"
 
 @test fn mega_table() void = {
 	const t = "ID          LOCALPATH                 REMOTEPATH RUN_STATE STATUS  ERROR SIZE\n"
-		"PSXVzmD1Odw /home/tux/.local/share/samling /Samling  Running   Synced NO    2.14 MB\n";
+		"PSXVzmD1Odw /home/tux/.local/share/samling /Mit  Running   Synced NO    2.14 MB\n";
 	let b: [48]u8 = [0...];
 	assert(sync_state(b, t, "/home/tux/.local/share/samling") == "Synced");
 	assert(sync_state(b, t, "/andet") == "mappen synkroniseres ikke");
+	const short = "ID LOCALPATH REMOTEPATH RUN_STATE STATUS\n"
+		"Ab1 /home/tux/.local/...re/samling /Andet Running Pending NO\n";
+	assert(sync_state(b, short, "/home/tux/.local/share/samling") == "Pending");
+	const remote = "Ab1 /x/y /Samling Running Synced NO\n";
+	assert(sync_state(b, remote, "/home/tux/.local/share/samling") == "Synced");
+	assert(!same_path("/home/...zzz", "/home/tux/samling"));
 };
 
 @test fn wrapping() void = {

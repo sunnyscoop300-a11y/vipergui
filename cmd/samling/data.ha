@@ -494,6 +494,20 @@ fn last_line(out: []u8, text: str) str = {
 	return strings::fromutf8_unsafe(out[..n]);
 };
 
+// MEGAcmd shortens long paths when it isn't writing to a terminal
+// ("/home/tux/.local/sh...ling" or "...share/samling"); this sees through it.
+fn same_path(shown: str, dir: str) bool = {
+	if (shown == dir || shown == strings::concat(dir, "/")!) return true;
+	match (strings::index(shown, "...")) {
+	case let i: size =>
+		const head = strings::sub(shown, 0, i);
+		const tail = strings::sub(shown, i + 3, strings::end);
+		return len(head) + len(tail) < len(dir)
+			&& strings::hasprefix(dir, head) && strings::hassuffix(dir, tail);
+	case void => return false;
+	};
+};
+
 // Finds dir's line in mega-sync's table and returns its STATUS column.
 fn sync_state(out: []u8, table: str, dir: str) str = {
 	let it = strings::tokenize(table, "\n");
@@ -508,7 +522,7 @@ fn sync_state(out: []u8, table: str, dir: str) str = {
 			n += 1;
 		};
 		// ID LOCALPATH REMOTEPATH RUN_STATE STATUS ...
-		if (n >= 5 && w[1] == dir) {
+		if (n >= 5 && same_path(w[1], dir) || n >= 5 && w[2] == "/Samling") {
 			const k = copy_utf8(out, w[4]);
 			return strings::fromutf8_unsafe(out[..k]);
 		};
