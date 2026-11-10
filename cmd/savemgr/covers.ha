@@ -49,9 +49,11 @@ fn find_cached(appid: str, name: str) (str | void) = {
 		for (let rel .. list) {
 			const (head, tail) = strings::rcut(rel, "/");
 			const base = if (len(tail) == 0) head else tail;
-			// library_600x900.jpg, or library_600x900_2x.jpg
+			// library_600x900.jpg, or library_600x900_2x.jpg (but not
+			// library_hero_blur.jpg for library_hero.jpg)
 			if (base == name || (strings::hasprefix(base, stem)
-					&& strings::hassuffix(base, ext) && strings::hasprefix(strings::sub(base, len(stem)), "_"))) {
+					&& strings::hasprefix(strings::sub(base, len(stem)), "_2x.")
+					&& strings::hassuffix(base, ext))) {
 				return strings::concat(dir, "/", rel)!;
 			};
 		};
@@ -117,11 +119,13 @@ fn to_png(from: str, to: str, w: int, h: int) bool = {
 	};
 };
 
-// Gets one picture for a game unless it is there. True if it is there now.
-fn get_picture(appid: str, steam_name: str, out: str, w: int, h: int) bool = {
+// Gets one picture for a game unless it is there, by any of Steam's names
+// for it: Steam's own copies first, then the picture server. True if it
+// is there now.
+fn get_picture(appid: str, names: []str, out: str, w: int, h: int) bool = {
 	if (os::exists(out)) return true;
 	mkparent(out);
-	match (find_cached(appid, steam_name)) {
+	for (let n .. names) match (find_cached(appid, n)) {
 	case let src: str =>
 		defer free(src);
 		if (to_png(src, out, w, h)) return true;
@@ -130,7 +134,10 @@ fn get_picture(appid: str, steam_name: str, out: str, w: int, h: int) bool = {
 	const tmp = strings::concat(out, ".jpg")!;
 	defer free(tmp);
 	let ok = false;
-	if (download(appid, steam_name, tmp)) ok = to_png(tmp, out, w, h);
+	for (let n .. names) {
+		if (download(appid, n, tmp)) ok = to_png(tmp, out, w, h);
+		if (ok) break;
+	};
 	match (os::remove(tmp)) {
 	case => void;
 	};
@@ -149,11 +156,11 @@ fn fetch_covers(appid: str) bool = {
 	const had_p = os::exists(pp), had_b = os::exists(bp);
 	if (had_p && had_b) return false;
 	let new = false;
-	if (!had_p && get_picture(appid, "library_600x900.jpg", pp, 300, 450)) new = true;
+	// Older games call the poster library_600x900, newer library_capsule.
+	if (!had_p && get_picture(appid, ["library_600x900.jpg", "library_capsule.jpg"], pp, 300, 450)) new = true;
 	if (!had_b) {
 		// The wide hero picture, else the store header.
-		if (get_picture(appid, "library_hero.jpg", bp, 898, 340)
-				|| get_picture(appid, "header.jpg", bp, 898, 340)) new = true;
+		if (get_picture(appid, ["library_hero.jpg", "header.jpg"], bp, 898, 340)) new = true;
 	};
 	if (new) {
 		let b: [64]u8 = [0...];

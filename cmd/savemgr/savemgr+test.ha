@@ -151,5 +151,11 @@ fn setup() void = {
 	assert(strings::hassuffix(find_cached("242550", "library_600x900.jpg") as str, "/library_600x900_2x.jpg"));
 	assert(strings::hassuffix(find_cached("229540", "library_600x900.jpg") as str, "/229540_library_600x900.jpg"));
 	assert(find_cached("229540", "header.jpg") is void);
+	// New Steam: the poster is library_capsule in a hashed folder, and the
+	// blurred hero is not the hero.
+	put(strings::concat(lc, "/2467880/91aac599/library_capsule.jpg")!, "capsule");
+	put(strings::concat(lc, "/2467880/18/library_hero_blur.jpg")!, "blur");
+	assert(strings::hassuffix(find_cached("2467880", "library_capsule.jpg") as str, "/91aac599/library_capsule.jpg"));
+	assert(find_cached("2467880", "library_hero.jpg") is void);
 	assert(find_cached("1", "header.jpg") is void);
 };
