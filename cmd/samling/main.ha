@@ -45,7 +45,18 @@ type app = struct {
 	slen: size,
 	reset_armed: f64,
 	reset_ent: size,
+	covers: [MAXENT]cover,
 };
+
+// A cover: the picture as found, and copies sized for a card and for
+// the film page (made the first time they are needed).
+type cover = struct {
+	src: viper::image,
+	card: viper::image,
+	film: viper::image,
+};
+
+const NO_IMAGE: viper::image = viper::image { w = 0, h = 0, pixels = [] };
 
 fn say(a: *app, s: str) void = {
 	a.mlen = copy_utf8(a.msg, s);
@@ -88,9 +99,14 @@ export fn main() void = {
 		bg = viper::image { w = 0, h = 0, pixels = [] },
 		...
 	};
+	for (let e = 0z; e < MAXENT; e += 1) {
+		a.covers[e] = cover { src = NO_IMAGE, card = NO_IMAGE, film = NO_IMAGE };
+	};
+	load_covers(&a);
 	const skin = find_file("skin.png");
 	match (viper::load_png(skin)) {
 	case let img: viper::image =>
+		covers_from_mockup(&a, &img);
 		// The mockup's own title bar goes; the window has one.
 		const top = img.h * 42 / 1024;
 		const cut = viper::crop(&img, 0, top, img.w, img.h - top)!;
@@ -112,6 +128,60 @@ export fn main() void = {
 		if (keys(win, &a)) break;
 		draw(win, &a);
 		viper::present(win);
+	};
+};
+
+// cover-<name>.png in the save folder (or assets/samling/), for any entry:
+// "The Family Return" -> cover-the-family-return.png
+fn load_covers(a: *app) void = {
+	for (let e = 0z; e < len(ENTRIES); e += 1) {
+		const s = slug(ENTRIES[e].name);
+		const name = strings::concat("cover-", s, ".png")!;
+		free(s);
+		const path = find_file(name);
+		free(name);
+		match (viper::load_png(path)) {
+		case let img: viper::image => a.covers[e].src = img;
+		case viper::imgerror => void;
+		};
+		free(path);
+	};
+};
+
+// Where the mockup has its three covers (mockup pixels, inside the frame).
+const MOCK_COVERS: [3](int, int, int, int) = [
+	(276, 302, 128, 156), (710, 304, 126, 154), (1122, 304, 126, 154),
+];
+
+// The first three entries without a cover file get theirs from the mockup.
+fn covers_from_mockup(a: *app, img: *viper::image) void = {
+	for (let c = 0z; c < len(MOCK_COVERS) && c < len(ENTRIES); c += 1) {
+		if (a.covers[c].src.w != 0) continue;
+		const (x, y, w, h) = MOCK_COVERS[c];
+		a.covers[c].src = viper::crop(img, x * img.w / 1536, y * img.h / 1024,
+			w * img.w / 1536, h * img.h / 1024)!;
+	};
+};
+
+// Entry e's cover at w x h, or null when it has none.
+fn cover_at(a: *app, e: size, film: bool, w: int, h: int) nullable *viper::image = {
+	const c = &a.covers[e];
+	if (c.src.w == 0) return null;
+	const img = if (film) &c.film else &c.card;
+	if (img.w != w || img.h != h) {
+		if (img.w != 0) viper::image_free(img);
+		*img = viper::resize(&c.src, w, h)!;
+	};
+	return img;
+};
+
+// The cover, or a drawn one.
+fn show_cover(win: *viper::window, a: *app, e: size, film: bool, x: int, y: int, w: int, h: int) void = {
+	match (cover_at(a, e, film, w, h)) {
+	case let img: *viper::image =>
+		viper::round_rect(win, x - 1, y - 1, w + 2, h + 2, 7, 0xff5a73ff);
+		viper::draw_image(win, img, x, y);
+	case null => draw_cover(win, x, y, w, h, ENTRIES[e].name, e);
 	};
 };
 
@@ -482,7 +552,7 @@ fn draw_cards(win: *viper::window, a: *app) void = {
 		const tx = cx + 166;
 		if (!a.skin) {
 			glass(win, X(cx), Y(290), L(cw), L(182), 10, C_CARD);
-			draw_cover(win, X(cx + 13), Y(300), L(132), L(160), e.name, c);
+			show_cover(win, a, c, false, X(cx + 13), Y(300), L(132), L(160));
 		};
 		paint(win, a, tx - 6, 298, cx + cw - tx - 6, 166, tx - 8);
 		// The name.
@@ -721,34 +791,41 @@ fn draw_series(win: *viper::window, a: *app) void = {
 // ---- Films ----
 
 fn draw_films(win: *viper::window, a: *app) void = {
+	glass(win, X(260), Y(295), L(1253), L(620), 12, 0xff0a1648);
 	let k = 0;
-	let b: [96]u8 = [0...];
+	let b: [96]u8 = [0...], wb: [48]u8 = [0...];
 	for (let e = 0z; e < len(ENTRIES); e += 1) {
 		const ent = ENTRIES[e];
 		if (!ent.film) continue;
-		const x = 260 + (k % 2) * 630, y = 300 + (k / 2) * 210;
+		const x = 280, y = 315 + k * 245, w = 1213, h = 230;
 		k += 1;
-		if (y > 720) break;
-		glass(win, X(x), Y(y), L(615), L(195), 12, C_CARD);
-		draw_cover(win, X(x + 14), Y(y + 14), L(125), L(167), ent.name, e);
+		if (y + h > 915) break;
+		glass(win, X(x), Y(y), L(w), L(h), 12, C_CARD);
+		show_cover(win, a, e, true, X(x + 15), Y(y + 15), L(164), L(200));
+		const tx = X(x + 205);
 		let lines: [2]str = [""...];
-		const n = wrap(ent.name, L(440), lines);
-		for (let j = 0z; j < n; j += 1) bold2(win, X(x + 160), Y(y + 22) + j: int * 34, lines[j], C_TEXT);
-		const ty = Y(y + 22) + n: int * 34 + 6;
-		viper::text(win, X(x + 160), ty, fmt::bsprintf(b, "Film  ·  {}  ·  {} min", ent.year, ent.minutes)!, C_DIM);
-		if (len(ent.aired) > 0) viper::text(win, X(x + 160), ty + 20, fmt::bsprintf(b, "Premiere {}", ent.aired)!, C_DIM);
-		const seen = a.p.seen[e][0];
-		let wb: [48]u8 = [0...];
-		if (seen != 0) {
-			ok_badge(win, X(x + 172), ty + 54);
-			viper::text(win, X(x + 196), ty + 46, fmt::bsprintf(b, "Set {}", when(wb, seen))!, C_GREEN);
+		const n = wrap(ent.name, L(w - 205 - 300) / 2, lines);
+		for (let j = 0z; j < n; j += 1) bold2(win, tx, Y(y + 22) + j: int * 34, lines[j], C_TEXT);
+		let ty = Y(y + 22) + n: int * 34 + 8;
+		viper::text(win, tx, ty, fmt::bsprintf(b, "Film  ·  {}  ·  {} min", ent.year, ent.minutes)!, C_DIM);
+		ty += 22;
+		if (len(ent.aired) > 0) {
+			viper::text(win, tx, ty, fmt::bsprintf(b, "Premiere {}", ent.aired)!, C_DIM);
+			ty += 22;
 		};
-		if (btn(win, a, x + 360, y + 135, 235, 44, if (seen != 0) "Ikke set" else "Markér som set",
-				icon::EYE, false)) {
+		const seen = a.p.seen[e][0];
+		if (seen != 0) {
+			ok_badge(win, tx + 11, ty + 18);
+			viper::text(win, tx + 30, ty + 10, fmt::bsprintf(b, "Set {}", when(wb, seen))!, C_GREEN);
+		} else {
+			viper::text(win, tx, ty + 10, "Ikke set endnu", C_DIM);
+		};
+		if (btn(win, a, x + w - 280, y + h - 75, 260, 52,
+				if (seen != 0) "Markér som ikke set" else "Markér som set", icon::EYE, false)) {
 			toggle(a, e, 0);
 		};
 	};
-	if (k == 0) viper::text(win, X(270), Y(310), "Ingen film i samling.txt.", C_DIM);
+	if (k == 0) viper::text(win, X(290), Y(320), "Ingen film i samling.txt.", C_DIM);
 };
 
 // ---- Statistics ----
