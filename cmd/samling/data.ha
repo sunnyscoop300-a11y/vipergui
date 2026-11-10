@@ -49,6 +49,7 @@ fn nep(e: size) size = if (ENTRIES[e].film) 1 else len(ENTRIES[e].eps);
 type progress = struct {
 	seen: [MAXENT][MAXEP]i64,  // when (Unix time), 0 = not seen
 	synced: i64,               // when MEGA last said it was in sync
+	extra: []str,              // marks for titles samling.txt doesn't have
 };
 
 fn now() i64 = time::now(time::clock::REALTIME).sec;
@@ -167,6 +168,7 @@ fn read_text(path: str) (str | void) = {
 };
 
 fn load(p: *progress) void = {
+	strings::freeall(p.extra);
 	*p = progress { ... };
 	const dir = match (save_dir()) {
 	case let d: str => yield d;
@@ -183,43 +185,116 @@ fn load(p: *progress) void = {
 	};
 };
 
-// "set E S N TIME": episode N of season S of entry E (all from 1);
-// "film E TIME"; "sync TIME".
+// The progress file, one line per thing seen, found again by its name:
+//
+//	set TIME | Series | Episode title
+//	film TIME | Film
+//	sync TIME
+//
+// so samling.txt can be reordered and the marks follow the titles. The
+// old "set E S N TIME" / "film E TIME" (by position) is read too.
 fn parse(p: *progress, text: str) void = {
 	let it = strings::tokenize(text, "\n");
 	for (let line => strings::next_token(&it)) {
-		let f: [5]str = [""...];
-		let n = 0z;
-		let words = strings::tokenize(strings::trim(line), " ");
-		for (let w => strings::next_token(&words)) {
-			if (n == len(f)) break;
-			f[n] = w;
-			n += 1;
-		};
-		let v: [4]size = [0...];
-		for (let i = 1z; i < n; i += 1) {
-			v[i - 1] = match (strconv::stoz(f[i])) {
-			case let x: size => yield x;
+		const line = strings::trim(line);
+		const (key, rest) = strings::cut(line, " ");
+		if (key == "sync") {
+			p.synced = match (strconv::stoi64(strings::trim(rest))) {
+			case let t: i64 => yield t;
 			case => yield 0;
 			};
-		};
-		switch (f[0]) {
-		case "sync" =>
-			p.synced = v[0]: i64;
-		case "film" =>
-			const e = v[0];
-			if (e >= 1 && e <= len(ENTRIES) && ENTRIES[e - 1].film) {
-				p.seen[e - 1][0] = v[1]: i64;
-			};
-		case "set" =>
-			const (e, s, i) = (v[0], v[1], v[2]);
-			if (e < 1 || e > len(ENTRIES) || ENTRIES[e - 1].film) continue;
-			const ss = ENTRIES[e - 1].seasons;
-			if (s < 1 || s > len(ss) || i < 1 || i > ss[s - 1].n) continue;
-			p.seen[e - 1][ss[s - 1].first + i - 1] = v[3]: i64;
-		case => void;
+		} else if ((key == "set" || key == "film") && strings::contains(rest, "|")) {
+			if (!mark(p, key == "film", rest)) append(p.extra, strings::dup(line)!)!;
+		} else if (key == "set" || key == "film") {
+			old_mark(p, key == "film", rest);
 		};
 	};
+};
+
+// "TIME | Series | Title" or "TIME | Film": marks the first one with that
+// name not marked yet. False when samling.txt has no such thing.
+fn mark(p: *progress, film: bool, rest: str) bool = {
+	const t = match (strconv::stoi64(field(rest, 0))) {
+	case let t: i64 => yield t;
+	case => return true;     // nothing to keep
+	};
+	const e = match (find_entry(field(rest, 1), film)) {
+	case let e: size => yield e;
+	case void => return false;
+	};
+	if (film) {
+		p.seen[e][0] = t;
+		return true;
+	};
+	const title = field(rest, 2);
+	// Exactly the title first, then the same letters and digits.
+	for (let pass = 0; pass < 2; pass += 1) {
+		for (let i = 0z; i < len(ENTRIES[e].eps); i += 1) {
+			if (p.seen[e][i] != 0) continue;
+			const ti = ENTRIES[e].eps[i].title;
+			if (if (pass == 0) ti == title else same_name(ti, title)) {
+				p.seen[e][i] = t;
+				return true;
+			};
+		};
+	};
+	return false;
+};
+
+fn find_entry(name: str, film: bool) (size | void) = {
+	for (let pass = 0; pass < 2; pass += 1) {
+		for (let e = 0z; e < len(ENTRIES); e += 1) {
+			if (ENTRIES[e].film != film) continue;
+			const n = ENTRIES[e].name;
+			if (if (pass == 0) n == name else same_name(n, name)) return e;
+		};
+	};
+};
+
+// The same, not counting case, spaces and punctuation.
+fn same_name(a: str, b: str) bool = {
+	let x = strings::iter(a), y = strings::iter(b);
+	for (true) {
+		const r = next_alnum(&x), q = next_alnum(&y);
+		if (r != q) return false;
+		if (r == '\0') return true;
+	};
+};
+
+fn next_alnum(it: *strings::iterator) rune = {
+	for (true) {
+		match (strings::next(it)) {
+		case let r: rune =>
+			if (ascii::isalnum(r)) return ascii::tolower(r);
+			if (!ascii::valid(r)) return r;   // æøå count as they are
+		case done => return '\0';
+		};
+	};
+};
+
+// The old format: by position.
+fn old_mark(p: *progress, film: bool, rest: str) void = {
+	let v: [4]size = [0...];
+	let n = 0z;
+	let words = strings::tokenize(rest, " ");
+	for (let w => strings::next_token(&words)) {
+		if (n == len(v)) break;
+		v[n] = match (strconv::stoz(w)) {
+		case let x: size => yield x;
+		case => yield 0;
+		};
+		n += 1;
+	};
+	const e = v[0];
+	if (e < 1 || e > len(ENTRIES) || ENTRIES[e - 1].film != film) return;
+	if (film) {
+		p.seen[e - 1][0] = v[1]: i64;
+		return;
+	};
+	const (s, i) = (v[1], v[2]);
+	const ss = ENTRIES[e - 1].seasons;
+	if (s < 1 || s > len(ss) || i < 1 || i > ss[s - 1].n) return;
+	p.seen[e - 1][ss[s - 1].first + i - 1] = v[3]: i64;
 };
 
 fn save(p: *progress) void = {
@@ -244,21 +319,21 @@ fn save(p: *progress) void = {
 };
 
 fn write(f: io::handle, p: *progress) (void | io::error) = {
-	fmt::fprintfln(f, "# Samling - {}", NAME)?;
+	fmt::fprintfln(f, "# Samling - {}: set TID | SERIE | AFSNIT, film TID | FILM", NAME)?;
 	if (p.synced != 0) fmt::fprintfln(f, "sync {}", p.synced)?;
 	for (let e = 0z; e < len(ENTRIES); e += 1) {
-		if (ENTRIES[e].film) {
-			if (p.seen[e][0] != 0) fmt::fprintfln(f, "film {} {}", e + 1, p.seen[e][0])?;
+		const ent = ENTRIES[e];
+		if (ent.film) {
+			if (p.seen[e][0] != 0) fmt::fprintfln(f, "film {} | {}", p.seen[e][0], ent.name)?;
 			continue;
 		};
-		const ss = ENTRIES[e].seasons;
-		for (let s = 0z; s < len(ss); s += 1) {
-			for (let i = 0z; i < ss[s].n; i += 1) {
-				const t = p.seen[e][ss[s].first + i];
-				if (t != 0) fmt::fprintfln(f, "set {} {} {} {}", e + 1, s + 1, i + 1, t)?;
-			};
+		for (let i = 0z; i < len(ent.eps); i += 1) {
+			const t = p.seen[e][i];
+			if (t != 0) fmt::fprintfln(f, "set {} | {} | {}", t, ent.name, ent.eps[i].title)?;
 		};
 	};
+	// Kept for when the title is back in samling.txt.
+	for (let x .. p.extra) fmt::fprintln(f, x)?;
 };
 
 // ---- samling.txt ----

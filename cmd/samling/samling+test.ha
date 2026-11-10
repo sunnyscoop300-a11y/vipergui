@@ -44,15 +44,52 @@ const TEST: str = "# en kommentar\n"
 	defer io::close(&out)!;
 	write(&out, &p)!;
 	const text = strings::fromutf8(memio::buffer(&out))!;
-	assert(strings::contains(text, "set 1 2 1 1700000500"));
-	assert(strings::contains(text, "film 2 1700001000"));
+	assert(strings::contains(text, "set 1700000500 | Lynholdet | Jul\n"));
+	assert(strings::contains(text, "film 1700001000 | Filmen\n"));
 	let q = progress { ... };
 	parse(&q, text);
 	assert(q.seen[0][0] == 1700000000 && q.seen[0][2] == 1700000500);
 	assert(q.seen[1][0] == 1700001000 && q.synced == 1700002000);
-	// Lines that don't fit the collection are skipped.
+	// Old lines (by position) that don't fit the collection are skipped.
 	parse(&q, "set 1 9 1 5\nset 9 1 1 5\nset 1 1 7 5\nfilm 1 5\n");
 	assert(nseen(&q, 0) == 2);
+	// Old lines that fit are read.
+	let o = progress { ... };
+	parse(&o, "set 1 2 1 77\nfilm 2 88\n");
+	assert(o.seen[0][2] == 77 && o.seen[1][0] == 88);
+};
+
+@test fn marks_follow_titles() void = {
+	parse_collection(TEST);
+	let p = progress { ... };
+	p.seen[0][1] = 11;             // "Anden"
+	p.seen[0][2] = 22;             // "Jul"
+	let out = memio::dynamic();
+	defer io::close(&out)!;
+	write(&out, &p)!;
+	const text = strings::fromutf8(memio::buffer(&out))!;
+	// samling.txt reordered: Jul first, Anden renamed a little, and a
+	// title that is gone.
+	parse_collection("navn Lynholdet\nserie Lynholdet | 2020\nsæson 1\n"
+		"afsnit x | Jul\nafsnit x | Første lyn\nafsnit x | ANDEN!\n");
+	let q = progress { ... };
+	parse(&q, text);
+	assert(q.seen[0][0] == 22 && q.seen[0][1] == 0 && q.seen[0][2] == 11);
+	parse(&q, "set 33 | Lynholdet | Væk nu\nset 44 | Ukendt serie | Jul\n");
+	assert(len(q.extra) == 2);
+	// The marks samling.txt can't place are kept in the file.
+	let out2 = memio::dynamic();
+	defer io::close(&out2)!;
+	write(&out2, &q)!;
+	const text2 = strings::fromutf8(memio::buffer(&out2))!;
+	assert(strings::contains(text2, "set 33 | Lynholdet | Væk nu\n"));
+	// Two episodes with the same title: two marks, both found.
+	parse_collection("navn L\nserie L | 1\nafsnit x | Del\nafsnit x | Del\n");
+	let d = progress { ... };
+	parse(&d, "set 1 | L | Del\nset 2 | L | Del\n");
+	assert(d.seen[0][0] == 1 && d.seen[0][1] == 2);
+	assert(same_name("Æble: Del 1!", "æble del 1") == false);
+	assert(same_name("Phoebe vs. Max", "phoebe VS max"));
 };
 
 @test fn mega_table() void = {
