@@ -755,12 +755,17 @@ fn card(win: *viper::window, a: *app, gi: size, y: int, backup_page: bool) void 
 		draw_icon(win, icon::CLOUD_UP, X(905) + 17, py + ph / 2, C_CYAN);
 		do_it = over && viper::mouse_pressed(win);
 	} else {
+		// The whole pill is the backup button; the icon sits inside it.
 		const ok = synced(a);
+		const over = hit(win, X(905), py - 3, L(200), ph + 6);
+		const col = if (ok) C_GREEN else C_YELLOW;
 		pill(win, X(905), py, L(200), ph, if (ok) "Synkroniseret" else "Ikke synk.",
-			if (ok) C_GREEN else C_YELLOW, if (ok) 30 else 0);
-		if (ok) ok_badge(win, X(905) + 17, py + ph / 2, 8);
-		const over = hit(win, X(1095), py - 4, L(36), ph + 8);
-		draw_icon(win, icon::CLOUD_UP, X(1112), py + ph / 2, if (over) 0xff7fe4ff else C_CYAN);
+			if (over) mix(col, 0xffffffff, 0.35) else col, 30);
+		if (ok) {
+			ok_badge(win, X(905) + 17, py + ph / 2, 8);
+		} else {
+			draw_icon(win, icon::CLOUD_UP, X(905) + 17, py + ph / 2, C_YELLOW);
+		};
 		do_it = over && viper::mouse_pressed(win);
 	};
 	if (do_it) {
