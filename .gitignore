@@ -26,3 +26,6 @@ flappy-unicorn
 /assets/episoder/serie.txt
 /assets/samling/skin.png
 /assets/samling/samling.txt
+*.patch
+*.deb
+samling.txt
