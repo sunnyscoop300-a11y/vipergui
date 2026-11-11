@@ -100,7 +100,19 @@ export fn main() void = {
 		cover = viper::image { w = 0, h = 0, pixels = [] },
 		...
 	};
-	match (viper::load_png("assets/episoder/skin.png")) {
+		// The mockup: next to serie.txt first, else in assets/episoder/.
+	    const skin_path = match (save_dir()) {
+	case let d: str =>
+		const p = strings::concat(d, "/skin.png")!;
+		free(d);
+		yield if (os::exists(p)) p else {
+			free(p);
+			yield strings::dup("assets/episoder/skin.png")!;
+		};
+	case void => yield strings::dup("assets/episoder/skin.png")!;
+	};
+	defer free(skin_path);
+	match (viper::load_png(skin_path)) {
 	case let img: viper::image =>
 		a.bg = viper::resize(&img, W, H)!;
 		viper::image_free(&img);

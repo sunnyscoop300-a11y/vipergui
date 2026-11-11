@@ -516,7 +516,7 @@ fn play_tick(a: *app, dt: f64) void = {
 		free(s);
 		prune(g.appid, KEEP);
 		refresh(a, a.play_gi);
-		say(a, fmt::bsprintf(m, "Backup af {} efter spillet er klar – MEGA sender den videre.", g.name)!);
+		say(a, fmt::bsprintf(m, "Backup af {} efter {} min spil er klar – MEGA sender den videre." ,g.name, (a.play_t / 60.0): int)!);
 	case let e: failure =>
 		let c: [256]u8 = [0...];
 		const n = copy_utf8(c, e);
@@ -1036,7 +1036,10 @@ fn draw_details(win: *viper::window, a: *app) void = {
 		ok_badge(win, X(1225), ry + L(15), 8);
 		viper::text(win, X(1250), ry + L(15) - 8, stamp_text(t, bk.when), C_TEXT);
 		viper::text(win, X(1445), ry + L(15) - 8, fmt::bsprintf(b, "({})", size_text(z, bk.sz))!, C_TEXT);
-		if (len(bk.note) > 0) viper::text(win, X(1555), ry + L(15) - 8, "før", C_YELLOW);
+		if (len(bk.note) > 0) {
+			const ord = if (bk.note == "efter spil") "spil" else "før";
+			viper::text(win, X(1555), ry + L(15) - 8, ord, C_YELLOW);
+		};
 		if (btn(win, a, 1604, 532 + i: int * 32, 36, 22, "", icon::DOTS, style::PLAIN, false)) {
 			a.pg = page::RESTORE;
 			a.rsel = i;
