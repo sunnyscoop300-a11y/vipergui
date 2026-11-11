@@ -327,7 +327,7 @@ export fn main() void = {
 		};
 		viper::clear(win, viper::rgb(10, 10, 14));
 		draw_tunnel(win, &g);
-        if (OPPONENTS[g.opp].file == "xed") draw_pond(win);
+       	if (OPPONENTS[g.opp].file == "xed" || OPPONENTS[g.opp].file == "ogky") draw_pond(win);
 		draw_zebra(win, &g);
 		draw_ball(win, &g);
 		draw_player(win, &g);

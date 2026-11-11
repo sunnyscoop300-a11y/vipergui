@@ -5,12 +5,12 @@
 use fmt;
 use viper;
 
-def NOPP: size = 5;          // number of opponents
+def NOPP: size = 6;          // number of opponents
 def MAXFRAMES: size = 9;     // most animation frames an opponent may have
-def PIC: int = 126;          // portrait size on the cards
-def CARD_W: int = 146;
-def CARD_H: int = 220;
-def CARD_GAP: int = 10;
+def PIC: int = 108;          // portrait size on the cards
+def CARD_W: int = 124;
+def CARD_H: int = 190;
+def CARD_GAP: int = 8;
 def CARD_Y: int = 150;
 
 type opponent = struct {
@@ -34,6 +34,26 @@ type opponent = struct {
 };
 
 const OPPONENTS: [NOPP]opponent = [
+	opponent {
+		name = "OGKY",
+		short = "OGKY",
+		level = "Miniboss",
+		file = "ogky",
+		frames = 8,
+		frame_t = 0.14,
+		speed = 0.5,
+		grow = 0.3,
+		sleepy = true,
+		pad = 0xff7ac83a,
+		stripe = 0xff7a2a8a,
+		card = 0xff3a5a1a,
+		wall_a = 0xff4a7a2a,
+		wall_b = 0xff2a3a1a,
+		you_msg = "FWEET! Point til dig! OGKY plasker i mudderet!",
+		opp_msg = "FWEET! Point til OGKY! Sumpens dronning!",
+		won = "OGKY VANDT! SUMPEN REGERER!",
+	},
+
 	opponent {
 		name = "Zebraen",
 		short = "ZEBRA",
@@ -231,10 +251,12 @@ fn draw_menu(win: *viper::window, p: *portraits, sel: size, t: f64) void = {
 			viper::circle(win, px + PIC / 2 - 18, py + PIC / 2 - 12, 7, o.stripe);
 			viper::circle(win, px + PIC / 2 + 18, py + PIC / 2 - 12, 7, o.stripe);
 		};
-		viper::text_scaled(win, x + (CARD_W - viper::text_width(o.name, 2)) / 2,
-			y + 150, o.name, white, 2);
-		viper::text_scaled(win, x + (CARD_W - viper::text_width(o.level, 2)) / 2,
-			y + 186, o.level, gold, 2);
+			const ns = if (viper::text_width(o.name, 2) <= CARD_W - 8) 2 else 1;
+		viper::text_scaled(win, x + (CARD_W - viper::text_width(o.name, ns)) / 2,
+			y + 130, o.name, white, ns);
+		const ls = if (viper::text_width(o.level, 2) <= CARD_W - 8) 2 else 1;
+		viper::text_scaled(win, x + (CARD_W - viper::text_width(o.level, ls)) / 2,
+			y + 162, o.level, gold, ls);
 	};
 	centered(win, 460, "Pile / mus: vaelg    Enter / klik: spil    Esc: afslut", 1, white);
 };
