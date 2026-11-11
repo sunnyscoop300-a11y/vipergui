@@ -145,6 +145,9 @@ fn backup_game(gi: size, note: str) (str | failure) = {
 		const src = local_path(g.dirs[k]);
 		defer free(src);
 		fmt::fprintfln(&meta, "mappe {} {}", k, g.dirs[k])!;
+		// A folder that isn't there yet (a game never played on this PC)
+		// has nothing in it.
+		if (!os::exists(src)) continue;
 		let list: []str = [];
 		defer strings::freeall(list);
 		match (walk(src, "", &list)) {
@@ -398,7 +401,11 @@ fn restore(gi: size, stamp: str) (str | void | failure) = {
 		case let v: size => yield v;
 		case => continue;
 		};
-		const t = local_path(if (k < len(g.dirs)) g.dirs[k] else p);
+		// This PC's folder, else the backup's as this PC has it.
+		const t = if (k < len(g.dirs)) local_path(g.dirs[k]) else match (translate(p, g.appid)) {
+			case let s: str => yield s;
+			case void => yield local_path(p);
+			};
 		if (!safe_target(t)) {
 			free(t);
 			return err("gendanner ikke til {}: for tæt på roden", p);
@@ -406,6 +413,12 @@ fn restore(gi: size, stamp: str) (str | void | failure) = {
 		for (len(targets) <= k) append(targets, "")!;
 		free(targets[k]);
 		targets[k] = t;
+	};
+	// A game without folders here (never set up on this PC) takes the
+	// backup's, so it is backed up from there from now on.
+	if (len(g.dirs) == 0 && len(targets) > 0) {
+		for (let t .. targets) append(GAMES[gi].dirs, tilde(t))!;
+		save_games();
 	};
 	// What is there now goes into a backup of its own first.
 	let before: (str | void) = void;

@@ -87,15 +87,16 @@ fn setup() void = {
 
 @test fn nothing_to_back_up() void = {
 	setup();
+	// A missing folder counts as empty: the other one is backed up.
 	GAMES[0].dirs[0] = strings::dup(tp("/game/findes-ikke"))!;
-	assert(backup_game(0, "") is failure);
+	free(backup_game(0, "") as str);
 	free(GAMES[0].dirs[0]);
 	GAMES[0].dirs[0] = strings::dup(tp("/game/tom"))!;
 	free(GAMES[0].dirs[1]);
 	GAMES[0].dirs[1] = strings::dup(tp("/game/tom"))!;
 	os::mkdirs(tp("/game/tom"), fs::mode::USER_RWX)!;
 	assert(strings::hasprefix(backup_game(0, "") as failure, "ingen save-filer"));
-	assert(len(list_backups("1172380")) == 0);
+	assert(len(list_backups("1172380")) == 1);
 };
 
 @test fn games_file() void = {
@@ -362,4 +363,47 @@ fn acf(lib: str, id: str, name: str) void = {
 	const hk = guess_saves("367520", lib, "Hollow Knight", "Hollow Knight") as str;
 	assert(strings::hassuffix(hk, "/.config/unity3d/Team Cherry/Hollow Knight"));
 	free(hk);
+};
+
+@test fn first_time_on_this_pc() void = {
+	setup();
+	// Made on the other PC.
+	const s1 = backup_game(0, "efter spil") as str;
+	defer free(s1);
+	// Here the game was never played: its folders aren't there.
+	os::rmdirall(tp("/game"))!;
+	assert(strings::hasprefix(backup_game(0, "") as failure, "ingen save-filer"));
+	assert(restore(0, s1) is void);
+	assert(get(tp("/game/saves/slot1.sav")) == "level 3");
+	assert(get(tp("/game/more/cloud.dat")) == "x");
+};
+
+@test fn from_linux_to_windows_and_back() void = {
+	setup();
+	os::setenv("HOME", tp("/home"))!;
+	const rest = "AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure";
+	const proton = fmt::asprintf("{}/lib/steamapps/compatdata/1887840/pfx/drive_c/users/steamuser/{}", TROOT, rest)!;
+	// WSL: the Proton path becomes the Windows user's.
+	os::setenv("HPO_WINUSERS", tp("/c/Users"))!;
+	os::mkdirs(tp("/c/Users/ssj3g/AppData"), fs::mode::USER_RWX)!;
+	assert(strings::hassuffix(translate(proton, "1887840") as str, "/c/Users/ssj3g/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure"));
+	// A game with no folders here, restored from Nebula's backup.
+	free(GAMES[0].dirs[0]);
+	free(GAMES[0].dirs[1]);
+	GAMES[0].dirs = [];
+	append(GAMES[0].dirs, strings::dup(proton)!)!;
+	put(strings::concat(proton, "/Save1/s.sav")!, "nebula");
+	const s1 = backup_game(0, "efter spil") as str;
+	defer free(s1);
+	GAMES[0].dirs = [];
+	assert(restore(0, s1) is void);
+	assert(len(GAMES[0].dirs) == 1 && strings::hassuffix(GAMES[0].dirs[0], "/ssj3g/" "AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure"));
+	assert(get(tp("/c/Users/ssj3g/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure/Save1/s.sav")) == "nebula");
+	// Linux: a Windows path goes into the game's Proton prefix.
+	os::setenv("HPO_WINUSERS", tp("/ingen"))!;
+	defer os::unsetenv("HPO_WINUSERS")!;
+	put(tp("/home/.steam/debian-installation/steamapps/compatdata/1887840/pfx/drive_c/users/steamuser/x"), "x");
+	const back = translate("C:\\Users\\ssj3g\\AppData\\LocalLow\\Aggro Crab\\AnotherCrabsTreasure", "1887840") as str;
+	assert(strings::hassuffix(back, "/compatdata/1887840/pfx/drive_c/users/steamuser/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure"));
+	assert(translate("C:\\Users\\ssj3g\\x", "999") is void);
 };

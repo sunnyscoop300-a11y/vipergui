@@ -436,7 +436,7 @@ fn do_start(a: *app, gi: size) void = {
 		if (a.play_phase == 0) watch(a, gi, 2);
 		return;
 	};
-	if (MEGA_PLAY && len(g.dirs) > 0) {
+	if (MEGA_PLAY) {
 		// What MEGA has brought since the window opened.
 		refresh(a, gi);
 		const inf = a.infos[gi];

@@ -525,3 +525,37 @@ fn import_steam() (size, size) = {
 	};
 	return (added, with_dir);
 };
+
+// A save folder from another PC, as this PC has it: a Proton prefix path
+// (".../pfx/drive_c/users/steamuser/<rest>") becomes the Windows user's
+// <rest> in WSL, and a Windows path ("C:\\Users\\<name>\\<rest>" or
+// /mnt/c/Users/<name>/<rest>) becomes <rest> in the game's Proton prefix
+// on Linux. Void when this PC has no such place.
+fn translate(p: str, appid: str) (str | void) = {
+	const pp = local_path(p);
+	defer free(pp);
+	const marker = "/pfx/drive_c/users/steamuser/";
+	const users = windows_users();
+	defer strings::freeall(users);
+	match (strings::index(pp, marker)) {
+	case let i: size =>
+		if (len(users) == 0) return;
+		return strings::concat(users[0], "/", strings::sub(pp, i + len(marker)))!;
+	case void => void;
+	};
+	const win = "/mnt/c/Users/";
+	if (!strings::hasprefix(pp, win) || len(users) > 0) return;
+	// Past the user's name.
+	const rest = strings::sub(pp, len(win));
+	const rest = match (strings::index(rest, "/")) {
+	case let i: size => yield strings::sub(rest, i + 1);
+	case void => return;
+	};
+	const libs = steam_libraries();
+	defer strings::freeall(libs);
+	for (let l .. libs) {
+		const user = fmt::asprintf("{}/steamapps/compatdata/{}/pfx/drive_c/users/steamuser", l, appid)!;
+		defer free(user);
+		if (os::exists(user)) return strings::concat(user, "/", rest)!;
+	};
+};
