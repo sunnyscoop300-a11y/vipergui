@@ -113,6 +113,7 @@ type found = struct {
 	appid: str,
 	name: str,
 	lib: str,
+	installdir: str, // its folder in steamapps/common
 };
 
 fn free_found(list: []found) void = {
@@ -120,6 +121,7 @@ fn free_found(list: []found) void = {
 		free(f.appid);
 		free(f.name);
 		free(f.lib);
+		free(f.installdir);
 	};
 	free(list);
 };
@@ -158,13 +160,14 @@ fn installed_games() []found = {
 			case void => continue;
 			};
 			defer free(text);
-			let appid = "", name = "";
+			let appid = "", name = "", idir = "";
 			let it = strings::tokenize(text, "\n");
 			for (let line => strings::next_token(&it)) {
 				let q: [2]str = ["", ""];
 				if (quoted(line, q) != 2) continue;
 				if (q[0] == "appid" && len(appid) == 0) appid = q[1];
 				if (q[0] == "name" && len(name) == 0) name = q[1];
+				if (q[0] == "installdir" && len(idir) == 0) idir = q[1];
 			};
 			if (len(appid) == 0 || is_tool(appid, name)) continue;
 			let dup = false;
@@ -174,6 +177,7 @@ fn installed_games() []found = {
 				appid = strings::dup(appid)!,
 				name = unescape(if (len(name) > 0) name else appid),
 				lib = strings::dup(lib)!,
+				installdir = unescape(idir),
 			})!;
 		};
 	};
@@ -310,8 +314,114 @@ fn own_dir(user: str) (str | void) = {
 	};
 };
 
+// "Another Crab's Treasure" -> anothercrabstreasure, to compare folder names.
+fn norm(s: str, buf: []u8) str = {
+	let n = 0z;
+	for (let c .. strings::toutf8(s)) {
+		if (n >= len(buf)) break;
+		if (c >= 'A' && c <= 'Z') {
+			buf[n] = c + 32;
+			n += 1;
+		} else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+			buf[n] = c;
+			n += 1;
+		};
+	};
+	return strings::fromutf8_unsafe(buf[..n]);
+};
+
+// Does a folder name belong to the game (its name or install folder)?
+fn names_game(dir: str, name: str, installdir: str) bool = {
+	let a: [128]u8 = [0...], b: [128]u8 = [0...], c: [128]u8 = [0...];
+	const d = norm(dir, a);
+	if (len(d) < 3) return false;
+	return d == norm(name, b) || d == norm(installdir, c);
+};
+
+// The child of dir (or, with two levels, grandchild: <company>/<game>)
+// named after the game.
+fn game_child(dir: str, name: str, installdir: str, levels: int) (str | void) = {
+	const ents = match (os::readdir(dir)) {
+	case let e: []fs::dirent => yield e;
+	case => return;
+	};
+	defer fs::dirents_free(ents);
+	for (let e .. ents) {
+		if (!dir_ent(dir, e)) continue;
+		if (names_game(e.name, name, installdir)) return strings::concat(dir, "/", e.name)!;
+	};
+	if (levels < 2) return;
+	for (let e .. ents) {
+		if (!dir_ent(dir, e) || junk_dir(e.name)) continue;
+		const sub = strings::concat(dir, "/", e.name)!;
+		defer free(sub);
+		match (game_child(sub, name, installdir, 1)) {
+		case let s: str => return s;
+		case void => void;
+		};
+	};
+};
+
+// Windows' user folders, seen from WSL ($HPO_WINUSERS, else /mnt/c/Users).
+fn windows_users() []str = {
+	let out: []str = [];
+	const root = os::tryenv("HPO_WINUSERS", "/mnt/c/Users");
+	const ents = match (os::readdir(root)) {
+	case let e: []fs::dirent => yield e;
+	case => return out;
+	};
+	defer fs::dirents_free(ents);
+	for (let e .. ents) {
+		switch (e.name) {
+		case ".", "..", "Public", "Default", "Default User", "All Users", "WsiAccount", "defaultuser0" => continue;
+		case => void;
+		};
+		const u = strings::concat(root, "/", e.name)!;
+		const ad = strings::concat(u, "/AppData")!;
+		defer free(ad);
+		if (os::exists(ad)) append(out, u)! else free(u);
+	};
+	return out;
+};
+
+// Saves outside Proton: on Windows (from WSL) and native Linux games, in a
+// folder named after the game; inside it a save folder if there is one.
+fn guess_by_name(name: str, installdir: str) (str | void) = {
+	let bases: [](str, int) = [];
+	defer {
+		for (let b .. bases) free(b.0);
+		free(bases);
+	};
+	const users = windows_users();
+	defer strings::freeall(users);
+	for (let u .. users) {
+		append(bases, (strings::concat(u, "/AppData/LocalLow")!, 2))!;
+		append(bases, (strings::concat(u, "/AppData/Local")!, 2))!;
+		append(bases, (strings::concat(u, "/AppData/Roaming")!, 2))!;
+		append(bases, (strings::concat(u, "/Documents/My Games")!, 1))!;
+		append(bases, (strings::concat(u, "/Documents")!, 1))!;
+		append(bases, (strings::concat(u, "/Saved Games")!, 1))!;
+		append(bases, (strings::concat(u, "/OneDrive/Documents")!, 1))!;
+	};
+	const home = os::tryenv("HOME", "/root");
+	append(bases, (strings::concat(home, "/.config/unity3d")!, 2))!;
+	append(bases, (strings::concat(home, "/.local/share")!, 1))!;
+	for (let b .. bases) {
+		match (game_child(b.0, name, installdir, b.1)) {
+		case let g: str =>
+			match (find_save_dir(g, 3)) {
+			case let s: str =>
+				free(g);
+				return s;
+			case void => return g;
+			};
+		case void => void;
+		};
+	};
+};
+
 // A guess at where a game keeps its saves, or void.
-fn guess_saves(appid: str, lib: str) (str | void) = {
+fn guess_saves(appid: str, lib: str, name: str, installdir: str) (str | void) = {
 	// The Proton prefix is in the game's library or Steam's own.
 	let places: []str = [];
 	defer strings::freeall(places);
@@ -337,6 +447,11 @@ fn guess_saves(appid: str, lib: str) (str | void) = {
 		case let s: str => return s;
 		case void => void;
 		};
+	};
+	// Windows (from WSL) or a native Linux game.
+	match (guess_by_name(name, installdir)) {
+	case let s: str => return s;
+	case void => void;
 	};
 	// Steam Cloud's copy.
 	for (let r .. roots) {
@@ -377,7 +492,7 @@ fn import_steam() (size, size) = {
 		// A known game without a save folder: guess again.
 		match (find_game(f.appid)) {
 		case let i: size =>
-			if (len(GAMES[i].dirs) == 0) match (guess_saves(f.appid, f.lib)) {
+			if (len(GAMES[i].dirs) == 0) match (guess_saves(f.appid, f.lib, f.name, f.installdir)) {
 			case let s: str =>
 				append(GAMES[i].dirs, tilde(s))!;
 				free(s);
@@ -394,7 +509,7 @@ fn import_steam() (size, size) = {
 			proc = "",
 			...
 		})!;
-		match (guess_saves(f.appid, f.lib)) {
+		match (guess_saves(f.appid, f.lib, f.name, f.installdir)) {
 		case let s: str =>
 			append(GAMES[len(GAMES) - 1].dirs, tilde(s))!;
 			free(s);

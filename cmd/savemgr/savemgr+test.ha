@@ -277,11 +277,11 @@ fn acf(lib: str, id: str, name: str) void = {
 		("1186640", "/PumpkinJack/Saved/SaveGames"),
 	];
 	for (let w .. want) {
-		const got = guess_saves(w.0, lib) as str;
+		const got = guess_saves(w.0, lib, "", "") as str;
 		assert(strings::hassuffix(got, w.1));
 		free(got);
 	};
-	assert(guess_saves("42", lib) is void);
+	assert(guess_saves("42", lib, "Ukendt", "ukendt") is void);
 	assert(slot_name("Save1") && slot_name("save_02") && slot_name("Slot3") && !slot_name("Saves") && !slot_name("Save"));
 	assert(save_name("SAVEDATA") && save_name("SaveGames") && !save_name("Saved"));
 };
@@ -332,4 +332,34 @@ fn acf(lib: str, id: str, name: str) void = {
 	// reg.exe's answer in WSL.
 	assert(running_appid("\r\nHKEY_CURRENT_USER\\Software\\Valve\\Steam\r\n    RunningAppID    REG_DWORD    0x25a828\r\n") == 2467880);
 	assert(running_appid("    RunningAppID    REG_DWORD    0x0\r\n") != 0);
+};
+
+@test fn windows_save_folders() void = {
+	setup();
+	os::setenv("HOME", tp("/home"))!;
+	os::setenv("HPO_WINUSERS", tp("/c/Users"))!;
+	defer os::unsetenv("HPO_WINUSERS")!;
+	const u = tp("/c/Users/ssj3g");
+	put(strings::concat(u, "/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure/Save1/s")!, "x");
+	put(strings::concat(u, "/AppData/LocalLow/Other Co/OtherGame/Saves/s")!, "x");
+	put(strings::concat(u, "/AppData/Local/LittleNightmares/Saved/SaveGames/s")!, "x");
+	put(strings::concat(u, "/Documents/Spyro Reignited Trilogy/x")!, "x");
+	put(tp("/c/Users/Public/AppData/Local/LittleNightmares/x"), "x");
+	const lib = tp("/c/Steam");
+	const crab = guess_saves("1887840", lib, "Another Crab's Treasure", "Another Crab's Treasure") as str;
+	assert(strings::hassuffix(crab, "/ssj3g/AppData/LocalLow/Aggro Crab/AnotherCrabsTreasure"));
+	free(crab);
+	const ln = guess_saves("424840", lib, "Little Nightmares", "Little Nightmares") as str;
+	assert(strings::hassuffix(ln, "/ssj3g/AppData/Local/LittleNightmares/Saved/SaveGames"));
+	free(ln);
+	const sp = guess_saves("996580", lib, "Spyro™ Reignited Trilogy", "Spyro Reignited Trilogy") as str;
+	assert(strings::hassuffix(sp, "/Documents/Spyro Reignited Trilogy"));
+	free(sp);
+	assert(guess_saves("1", lib, "Smurfs", "Smurfs") is void);
+	assert(!names_game("x", "x", "x"));
+	// Native Linux Unity game.
+	put(tp("/home/.config/unity3d/Team Cherry/Hollow Knight/user1.dat"), "x");
+	const hk = guess_saves("367520", lib, "Hollow Knight", "Hollow Knight") as str;
+	assert(strings::hassuffix(hk, "/.config/unity3d/Team Cherry/Hollow Knight"));
+	free(hk);
 };
