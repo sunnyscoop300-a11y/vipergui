@@ -5,12 +5,12 @@
 use fmt;
 use viper;
 
-def NOPP: size = 6;          // number of opponents
+def NOPP: size = 7;          // number of opponents
 def MAXFRAMES: size = 9;     // most animation frames an opponent may have
-def PIC: int = 108;          // portrait size on the cards
-def CARD_W: int = 124;
+def PIC: int = 96;           // portrait size on the cards
+def CARD_W: int = 108;
 def CARD_H: int = 190;
-def CARD_GAP: int = 8;
+def CARD_GAP: int = 4;
 def CARD_Y: int = 150;
 
 type opponent = struct {
@@ -34,6 +34,25 @@ type opponent = struct {
 };
 
 const OPPONENTS: [NOPP]opponent = [
+	opponent {
+		name = "Potatoman",
+		short = "POTATO",
+		level = "Mini-miniboss",
+		file = "potato",
+		frames = 9,
+		frame_t = 0.13,
+		speed = 0.4,
+		grow = 0.25,
+		sleepy = true,
+		pad = 0xffffc83a,
+		stripe = 0xff5a3a1a,
+		card = 0xff8a5a1a,
+		wall_a = 0xffe0a830,
+		wall_b = 0xff3a1a5a,
+		you_msg = "FWEET! Point til dig! Potatoman bliver til mos!",
+		opp_msg = "FWEET! Point til Potatoman! Gyldne sneakers!",
+		won = "POTATOMAN VANDT! FRITTERET!",
+	},
 	opponent {
 		name = "OGKY",
 		short = "OGKY",
