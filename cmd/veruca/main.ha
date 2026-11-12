@@ -298,10 +298,11 @@ fn xdg_open(path: str) void = {
 // Text from the clipboard (Ctrl+V) or the selection (middle click),
 // fetched with wl-paste on Wayland or xclip on X11.
 fn clip_text(primary: bool) ([]u8 | void) = {
+	const ps = "powershell.exe -NoProfile -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard\" 2>/dev/null | tr -d '\\r' | tr '\\n' ' '";
 	const sh = if (primary)
-		"wl-paste --no-newline --primary 2>/dev/null || xclip -o -selection primary 2>/dev/null > /tmp/veruca-v2-clip.txt"
+		"wl-paste --no-newline --primary 2>/dev/null || xclip -o -selection primary 2>/dev/null"
 		else "wl-paste --no-newline 2>/dev/null || xclip -o -selection clipboard 2>/dev/null";
-	const full = strings::concat("(", sh, ") > /tmp/veruca-v2-clip.txt")!;
+	const full = strings::concat("(", sh, " || ", ps, ") > /tmp/veruca-v2-clip.txt")!;
 	defer free(full);
 	let cmd = match (exec::cmd("sh", "-c", full)) {
 	case let c: exec::command => yield c;
@@ -313,9 +314,19 @@ fn clip_text(primary: bool) ([]u8 | void) = {
 		match (exec::wait(&p)) { case => void; };
 	case => return;
 	};
-	return read_all("/tmp/veruca-v2-clip.txt");
+	const data = match (read_all("/tmp/veruca-v2-clip.txt")) {
+	case let d: []u8 => yield d;
+	case void => return;
+	};
+	// Only real UTF-8 text may go into a text field.
+	match (strings::fromutf8(data)) {
+	case str => return data;
+	case => {
+		free(data);
+		return;
+	};
+	};
 };
-
 // Ctrl+V pastes into the field that has focus; a middle click pastes the
 // selection into the field under the mouse.
 fn paste(win: *viper::window, a: *app) void = {
