@@ -28,6 +28,9 @@ veruca-v2: viper/*.ha cmd/veruca/*.ha
 flappy-unicorn: viper/*.ha cmd/unicorn/*.ha
 	$(HARE) build -lSDL2 -o $@ cmd/unicorn/
 
+flamingo-putt: viper/*.ha cmd/putt/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/putt/
+
 mastodon: viper/*.ha cmd/mastodon/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/mastodon/
 
