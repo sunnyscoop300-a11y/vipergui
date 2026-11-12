@@ -493,7 +493,7 @@ fn load_pics(p: *pics) void = {
 	let buf: [64]u8 = [0...];
 	for (let i = 0z; i < FRAMES; i += 1) {
 		const a = fmt::bsprintf(buf, "assets/pong2/arena-{}.png", i)!;
-		match (load_scaled(a, 800, 800)) {
+		match (load_scaled(a, 520, 520)) {
 		case let img: viper::image =>
 			p.arena[i] = img;
 			p.arena_ok[i] = true;
@@ -723,7 +723,7 @@ fn draw_title(win: *viper::window, g: *game, p: *pics) void = {
 	viper::clear(win, DARK);
 	const f = (g.t / GIF_T): size % FRAMES;
 	if (p.arena_ok[f]) {
-		viper::draw_image(win, &p.arena[f], 0, -100);
+		viper::draw_image(win, &p.arena[f], 140, 4);
 	} else {
 		centered(win, 200, "GOLDEN PONG 3D 2", 4, GOLD);
 	};
