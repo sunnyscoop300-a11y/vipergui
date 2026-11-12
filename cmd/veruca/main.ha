@@ -75,6 +75,8 @@ type app = struct {
 	hist_ok: [NHIST]bool,
 	hist_path: [NHIST]sbuf,
 	t: f64,
+    mode: int,       // 0 = TRYL, 1 = REDIGER
+	ed: editor,
 };
 
 // --- helpers ---
@@ -377,6 +379,7 @@ fn draw(win: *viper::window, a: *app) void = {
 	viper::rect(win, 0, 60, W, 2, PURPLE);
 	viper::text_scaled(win, 22, 14, "VERUCA v2", GOLD, 2);
 	viper::text(win, 190, 22, "Den mørke magiker væver en højere kunst", 0xff9a8cb8);
+	mode_tabs(win, a);
 
 	// Preview.
 	const px = 20, py = 80;
@@ -468,6 +471,7 @@ export fn main() void = {
 	};
 
 	let a = app { ... };
+	ed_init(&a.ed);
 	a.ratio = 1;    // 2:3, the format OpenAI likes for tall pictures
 	set_status(&a, "Klar. Skriv en prompt og tryl.", 0xff9a8cb8);
     match (viper::load_png("assets/veruca/veruca-v2-logo.png")) {
@@ -482,8 +486,13 @@ export fn main() void = {
 		const dt = viper::delta(win);
 		a.t += dt;
 		if (a.running) poll(&a, dt);
-        paste(win, &a);
-		draw(win, &a);
+		if (a.mode == 1) {
+			edit_paste(win, &a.ed);
+			edit_screen(win, &a, dt);
+		} else {
+			paste(win, &a);
+			draw(win, &a);
+		};
 		viper::present(win);
 	};
 
@@ -495,4 +504,5 @@ export fn main() void = {
 	for (let i = 0z; i < NHIST; i += 1) {
 		if (a.hist_ok[i]) viper::image_free(&a.hist[i]);
 	};
+    edit_close(&a.ed);
 };
