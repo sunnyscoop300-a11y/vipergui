@@ -46,7 +46,7 @@ def P_STATS: int = 2;
 def P_SETTINGS: int = 3;
 
 const TITLES: [13]str = [
-	"Path", "Desires", "Revenge", "Sword", "Flower", "Dream", "Time",
+	"Road", "Desires", "Revenge", "Sword", "Flower", "Dream", "Time",
 	"Sky", "Moon", "Sin", "Punishment", "Soul", "God",
 ];
 
