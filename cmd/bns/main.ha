@@ -377,8 +377,9 @@ fn play(a: *app, i: size) void = {
 		"d=\"$1\"; n=\"$2\"; "
 		"f=$(ls -1 \"$d\" 2>/dev/null | grep -iE \"e(p)?[ ._-]*0?$n([^0-9]|$)\" | head -n1); "
 		"[ -z \"$f\" ] && f=$(ls -1 \"$d\" 2>/dev/null | grep -E \"(^|[^0-9])0?$n([^0-9]|$)\" | head -n1); "
-		"[ -n \"$f\" ] || exit 1; "
-		"xdg-open \"$d/$f\" >/dev/null 2>&1 &";
+		"[ -n \"$f\" ] || exit 1; "                                                                                                                           
+		"if command -v xdg-open >/dev/null 2>&1; then xdg-open \"$d/$f\" >/dev/null 2>&1 & "
+		"else (cd /mnt/c && cmd.exe /c start \"\" \"$(wslpath -w \"$d/$f\")\" >/dev/null 2>&1 &); fi";
 	if (sh_ok(script, dir, n)) {
 		say(a, "Starter episoden...", GREEN);
 	} else {
