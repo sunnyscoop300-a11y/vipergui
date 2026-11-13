@@ -40,6 +40,9 @@ bines: viper/*.ha cmd/bines/*.ha
 episoder: viper/*.ha cmd/episoder/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/episoder/
 
+bns-tracker: viper/*.ha cmd/bns/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/bns/
+
 samling: viper/*.ha cmd/samling/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/samling/
 
@@ -91,6 +94,7 @@ desktop: all
 		cp assets/episoder/episoder-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/episoder.png; \
 		cp assets/samling/samling-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/samling.png; \
 		cp assets/savemgr/savemgr-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/savemgr.png; \
+        cp assets/bns/bns-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/bns-tracker.png; \
         cp assets/veruca/veruca-v2-$$s.png $(ICONS)/$${s}x$${s}/apps/veruca-v2.png; \
 	done
 	@mkdir -p $(ICONS)/scalable/apps
@@ -104,6 +108,7 @@ desktop: all
 	$(call entry,samling,Samling,Tracker til en familie af serier og film,samling,AudioVideo;Video;)
 	$(call entry,savemgr,HPO Steam Save Manager,Backup og sync af Steam-saves med MEGA,savemgr,Game;Utility;)
 	$(call entry,veruca-v2,Veruca v2,AI billedgenerator - den mørke magiker,veruca-v2,Graphics;)
+	$(call entry,bns-tracker,Blade & Soul Tracker,Anime tracker til Blade & Soul,bns-tracker,AudioVideo;Video;)
 	@command -v update-desktop-database >/dev/null && update-desktop-database $(APPS) || true
 	@command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
 	@echo "Installed. Look for the apps in your menu."
