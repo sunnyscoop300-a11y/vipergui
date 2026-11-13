@@ -955,7 +955,95 @@ fn draw_message(win: *viper::window, a: *app) void = {
 	viper::round_rect(win, x - 12, 114, tw + 24, 26, 9, SIDE);
 	viper::text(win, x, 119, a.msg, TEXT);
 };
+// Text from the clipboard (or the selection for a middle click):
+// wl-paste on Wayland, xclip on X11, PowerShell in WSL.
+fn clip_text(primary: bool) ([]u8 | void) = {
+	const ps = "powershell.exe -NoProfile -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard\" 2>/dev/null | tr -d '\\r' | tr '\\n' ' '";
+	const sh = if (primary)
+		"wl-paste --no-newline --primary 2>/dev/null || xclip -o -selection primary 2>/dev/null"
+		else "wl-paste --no-newline 2>/dev/null || xclip -o -selection clipboard 2>/dev/null";
+	const full = strings::concat("(", sh, " || ", ps, ") > /tmp/bns-clip.txt")!;
+	defer free(full);
+	sh_ok(full, "", "");
+	const f = match (os::open("/tmp/bns-clip.txt")) {
+	case let f: io::file => yield f;
+	case => return;
+	};
+	defer io::close(f)!;
+	const data = match (io::drain(f)) {
+	case let d: []u8 => yield d;
+	case => return;
+	};
+	// Only real UTF-8 text may go into a text field.
+	match (strings::fromutf8(data)) {
+	case str => return data;
+	case => {
+		free(data);
+		return;
+	};
+	};
+};
 
+// Adds the text at the end of the field; line breaks become spaces.
+fn paste_into(tb: *viper::textinput, data: []u8) void = {
+	for (let i = 0z; i < len(data) && tb.length < len(tb.buf); i += 1) {
+		const c: u8 = if (data[i] == 10 || data[i] == 13 || data[i] == 9) 32 else data[i];
+		tb.buf[tb.length] = c;
+		tb.length += 1;
+	};
+};
+
+// The text field under the mouse on this page, if any.
+fn box_at(win: *viper::window, a: *app) nullable *viper::textinput = {
+	switch (a.page) {
+	case P_SETTINGS =>
+		if (inside(win, 230, 148, 700, 30)) return &a.folder;
+	case P_NOTES =>
+		for (let i = 0z; i < NEP; i += 1) {
+			if (inside(win, 400, 110 + i: int * 44, 680, 30)) return &a.notes[i];
+		};
+	case P_OVERVIEW =>
+		if (inside(win, 742, 562, 336, 30)) return &a.notes[a.sel];
+	case => void;
+	};
+	return null;
+};
+
+fn focused_box(a: *app) nullable *viper::textinput = {
+	if (a.folder.focused) return &a.folder;
+	for (let i = 0z; i < NEP; i += 1) {
+		if (a.notes[i].focused) return &a.notes[i];
+	};
+	return null;
+};
+
+// Ctrl+V, or a right/middle click on a text field, pastes.
+fn paste(win: *viper::window, a: *app) void = {
+	const ctrl = win.keys[224] != 0 || win.keys[228] != 0;   // left/right Ctrl
+	const ctrl_v = ctrl && viper::key_pressed(win, viper::key::V);
+	const clicks = viper::mouse_clicks(win);
+	const right = clicks & viper::RIGHT_BUTTON != 0;
+	const middle = clicks & viper::MIDDLE_BUTTON != 0;
+	if (!ctrl_v && !right && !middle) return;
+	if (right || middle) {
+	match (box_at(win, a)) {
+	case null => return;
+	case let t: *viper::textinput =>
+			unfocus_all(a);
+			t.focused = true;
+		};
+	};
+	const tb = match (focused_box(a)) {
+	case null => return;
+	case let t: *viper::textinput => yield t;
+	};
+	const data = match (clip_text(middle && !ctrl_v)) {
+	case let d: []u8 => yield d;
+	case void => return;
+	};
+	defer free(data);
+	paste_into(tb, data);
+};
 fn keys(win: *viper::window, a: *app) bool = {
 	if (viper::key_pressed(win, viper::key::ESCAPE)) {
 		if (!any_focused(a)) return false;
@@ -1020,6 +1108,7 @@ export fn main() void = {
 				say(&a, "Opdateret fra MEGA.", GREEN);
 			};
 		};
+        paste(win, &a);
 		if (!keys(win, &a)) break;
 		viper::clear(win, BG);
 		switch (a.page) {
