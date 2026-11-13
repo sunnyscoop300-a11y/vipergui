@@ -6,6 +6,7 @@
 //   assets/bns/portrait.png   the picture next to "Min fremdrift"
 //   assets/bns/ep-01.png ...  a picture for each episode
 use fmt;
+use fs;
 use io;
 use math;
 use os;
@@ -19,6 +20,7 @@ def W: int = 1100;
 def H: int = 700;
 def NEP: size = 13;
 def EP_MIN: int = 24;          // minutes per episode
+def MEGA_DIR: str = "/HPO/BnS-Tracker";
 
 def BG: viper::color = 0xff120c1c;
 def SIDE: viper::color = 0xff160f22;
@@ -71,6 +73,9 @@ type app = struct {
 	msg_col: viper::color,
 	t: f64,
 	confirm_t: f64,
+    mtime: i64,             // when the save file last changed
+	check_t: f64,
+	mega: int,              // 0 = ?, 1 = synkroniseres, 2 = ikke sat op, 3 = ingen MEGAcmd
 	banner: viper::image,
 	banner_ok: bool,
 	portrait: viper::image,
@@ -161,11 +166,23 @@ fn today(buf: []u8) str = {
 
 // --- saving: ~/.bns-tracker ---
 
-fn save_path(buf: []u8) str = fmt::bsprintf(buf, "{}/.bns-tracker", home())!;
+fn data_dir(buf: []u8) str = fmt::bsprintf(buf, "{}/.local/share/bns-tracker", home())!;
+
+fn save_path(buf: []u8) str =
+	fmt::bsprintf(buf, "{}/.local/share/bns-tracker/bns-tracker.txt", home())!;
+
+fn file_mtime(path: str) i64 = match (os::stat(path)) {
+case let st: fs::filestat => yield st.mtime.sec;
+case => yield 0;
+};
 
 fn save(a: *app) void = {
+	let db: [512]u8 = [0...];
+	match (os::mkdirs(data_dir(db), 0o755)) { case => void; };
 	let pb: [512]u8 = [0...];
-	const f = match (os::create(save_path(pb), 0o644)) {
+	const p = save_path(pb);
+	defer a.mtime = file_mtime(p);
+	const f = match (os::create(p, 0o644)) {
 	case let f: io::file => yield f;
 	case => return;
 	};
@@ -201,6 +218,72 @@ fn split_fields(s: str, out: []str) size = {
 	return n;
 };
 
+fn load_file(a: *app, path: str) bool = {
+	const f = match (os::open(path)) {
+	case let f: io::file => yield f;
+	case => return false;
+	};
+	defer io::close(f)!;
+	const data = match (io::drain(f)) {
+	case let d: []u8 => yield d;
+	case => return false;
+	};
+	defer free(data);
+	let start = 0z;
+	for (let i = 0z; i <= len(data); i += 1) {
+		if (i == len(data) || data[i] == 10) {
+			let end = i;
+			if (end > start && data[end - 1] == 13) end -= 1;
+			match (strings::fromutf8(data[start..end])) {
+			case let s: str => load_line(a, s);
+			case => void;
+			};
+			start = i + 1;
+		};
+	};
+	return true;
+};
+
+fn load(a: *app) void = {
+	let pb: [512]u8 = [0...];
+	const p = save_path(pb);
+	if (!load_file(a, p)) {
+		// The old place, from before MEGA sync.
+		let ob: [512]u8 = [0...];
+		load_file(a, fmt::bsprintf(ob, "{}/.bns-tracker", home())!);
+	};
+	a.mtime = file_mtime(p);
+};
+
+// Forgets everything before the file is read again.
+fn reset(a: *app) void = {
+	for (let i = 0z; i < NEP; i += 1) {
+		a.status[i] = MISSING;
+		a.fav[i] = false;
+		a.seen_n[i] = 0;
+		viper::textinput_clear(&a.notes[i]);
+	};
+};
+
+fn check_mega(a: *app) void = {
+	if (!sh_ok("command -v mega-sync >/dev/null", "", "")) {
+		a.mega = 3;
+		return;
+	};
+	a.mega = if (sh_ok("mega-sync 2>/dev/null | grep -q BnS-Tracker", "", "")) 1 else 2;
+};
+
+fn mega_setup(a: *app) void = {
+	save(a);
+	let db: [512]u8 = [0...];
+	const ok = sh_ok("mega-mkdir -p \"$2\" >/dev/null 2>&1; mega-sync \"$1\" \"$2\" 2>&1 | grep -qiE \"added sync|already\"",
+		data_dir(db), MEGA_DIR);
+	check_mega(a);
+	const good = ok || a.mega == 1;
+	const col: viper::color = if (good) GREEN else RED;
+	say(a, if (good) "Synkroniseres nu med MEGA!" else "MEGA sagde nej - er du logget ind (mega-login)?", col);
+};
+
 fn load_line(a: *app, line: str) void = {
 	if (strings::hasprefix(line, "dir=")) {
 		set_input(&a.folder, strings::trimprefix(line, "dir="));
@@ -224,32 +307,6 @@ fn load_line(a: *app, line: str) void = {
 	a.seen[i][..dn] = d[..dn];
 	a.seen_n[i] = dn;
 	set_input(&a.notes[i], f[4]);
-};
-
-fn load(a: *app) void = {
-	let pb: [512]u8 = [0...];
-	const f = match (os::open(save_path(pb))) {
-	case let f: io::file => yield f;
-	case => return;
-	};
-	defer io::close(f)!;
-	const data = match (io::drain(f)) {
-	case let d: []u8 => yield d;
-	case => return;
-	};
-	defer free(data);
-	let start = 0z;
-	for (let i = 0z; i <= len(data); i += 1) {
-		if (i == len(data) || data[i] == 10) {
-			let end = i;
-			if (end > start && data[end - 1] == 13) end -= 1;
-			match (strings::fromutf8(data[start..end])) {
-			case let s: str => load_line(a, s);
-			case => void;
-			};
-			start = i + 1;
-		};
-	};
 };
 
 // --- actions ---
@@ -876,7 +933,18 @@ fn draw_settings(win: *viper::window, a: *app) void = {
 			a.confirm_t = 3.0;
 		};
 	};
-	viper::text(win, 230, 450, "Data gemmes i ~/.bns-tracker", DIM);
+	panel(win, 214, 442, 872, 120);
+	viper::text(win, 230, 458, "MEGA sync", GOLD);
+	switch (a.mega) {
+	case 1 =>
+		viper::text(win, 230, 482, "Synkroniseres med MEGA: /HPO/BnS-Tracker", GREEN);
+	case 3 =>
+		viper::text(win, 230, 482, "MEGAcmd er ikke installeret (mega.io/cmd).", RED);
+	case =>
+		viper::text(win, 230, 482, "Ikke sat op endnu. Du skal være logget ind i MEGAcmd.", DIM);
+		if (btn(win, 230, 512, 260, 32, "Sync med MEGA", false)) mega_setup(a);
+	};
+	viper::text(win, 230, 580, "Data gemmes i ~/.local/share/bns-tracker/", DIM);
 };
 
 fn draw_message(win: *viper::window, a: *app) void = {
@@ -923,6 +991,7 @@ export fn main() void = {
 
 	let a = app { ... };
 	load(&a);
+    check_mega(&a);
 	load_pictures(&a);
 	defer free_pictures(&a);
 	// Start on the first episode you haven't seen.
@@ -939,6 +1008,18 @@ export fn main() void = {
 		a.t += dt;
 		a.msg_t -= dt;
 		a.confirm_t -= dt;
+        // Changed on another PC (MEGA)? Read it again.
+		a.check_t -= dt;
+		if (a.check_t <= 0.0) {
+			a.check_t = 2.0;
+			let pb: [512]u8 = [0...];
+			const m = file_mtime(save_path(pb));
+		if (m != 0 && m != a.mtime && !any_focused(&a)) {
+				reset(&a);
+				load(&a);
+				say(&a, "Opdateret fra MEGA.", GREEN);
+			};
+		};
 		if (!keys(win, &a)) break;
 		viper::clear(win, BG);
 		switch (a.page) {
