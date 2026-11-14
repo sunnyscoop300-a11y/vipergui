@@ -144,6 +144,7 @@ export fn main() void = {
 		const dt = viper::delta(win);
 		if (a.msg_t > 0.0) a.msg_t -= dt;
 		if (a.armed > 0.0) a.armed -= dt;
+        paste(win, &a);
 		if (keys(win, &a)) break;
 		draw(win, &a);
 		viper::present(win);
@@ -574,6 +575,53 @@ fn open_thing(p: str) void = {
 
 fn typing(a: *app) bool = a.search.focused || a.tb_appid.focused || a.tb_name.focused
 	|| a.tb_dir.focused || a.tb_proc.focused || a.mail_tb.focused || a.pass_tb.focused;
+
+// ---- Paste: right/middle click or Ctrl+V into the field you clicked ----
+
+fn focused_box(a: *app) nullable *viper::textinput = {
+	if (a.search.focused) return &a.search;
+	if (a.tb_appid.focused) return &a.tb_appid;
+	if (a.tb_name.focused) return &a.tb_name;
+	if (a.tb_dir.focused) return &a.tb_dir;
+	if (a.tb_proc.focused) return &a.tb_proc;
+	if (a.mail_tb.focused) return &a.mail_tb;
+	if (a.pass_tb.focused) return &a.pass_tb;
+	return null;
+};
+
+fn paste(win: *viper::window, a: *app) void = {
+	const ctrl = win.keys[224] != 0 || win.keys[228] != 0;   // left/right Ctrl
+	const ctrl_v = ctrl && viper::key_pressed(win, viper::key::V);
+	const clicks = viper::mouse_clicks(win);
+	const middle = clicks & viper::MIDDLE_BUTTON != 0;
+	if (!ctrl_v && !middle && clicks & viper::RIGHT_BUTTON == 0) return;
+	const tb = match (focused_box(a)) {
+	case null => return;
+	case let t: *viper::textinput => yield t;
+	};
+	// wl-paste on Wayland, xclip on X11, PowerShell in WSL.
+	const ps = "powershell.exe -NoProfile -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard\" 2>/dev/null | tr -d '\\r' | tr '\\n' ' '";
+	const sh = if (middle && !ctrl_v)
+		"wl-paste --no-newline --primary 2>/dev/null || xclip -o -selection primary 2>/dev/null"
+		else "wl-paste --no-newline 2>/dev/null || xclip -o -selection clipboard 2>/dev/null";
+	const full = strings::concat("(", sh, " || ", ps, ")")!;
+	defer free(full);
+	const data = match (run("sh", "-c", full)) {
+	case let r: ([]u8, bool) => yield r.0;
+	case void => return;
+	};
+	defer free(data);
+	// Only real UTF-8 text may go into a text field.
+	match (strings::fromutf8(data)) {
+	case str => void;
+	case => return;
+	};
+	for (let i = 0z; i < len(data) && tb.length < len(tb.buf); i += 1) {
+		const c: u8 = if (data[i] == 10 || data[i] == 13 || data[i] == 9) 32 else data[i];
+		tb.buf[tb.length] = c;
+		tb.length += 1;
+	};
+};
 
 // Returns true to quit.
 fn keys(win: *viper::window, a: *app) bool = {
