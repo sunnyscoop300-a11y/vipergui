@@ -52,6 +52,9 @@ savemgr: viper/*.ha cmd/savemgr/*.ha
 jade: viper/*.ha cmd/jade/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/jade/
 
+gothecer: viper/*.ha cmd/gothecer/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/gothecer/
+
 slange: jade
 	./jade
 
