@@ -10,6 +10,15 @@ endif
 
 all: vipergui-demo flappy-crane mastodon bines jade episoder samling savemgr
 
+wolt-mini: viper/*.ha cmd/wolt/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/wolt/
+
+sj-mini: viper/*.ha cmd/sj/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/sj/
+
+katcha: viper/*.ha cmd/katcha/*.ha
+	$(HARE) build $(FLAGS) -o $@ cmd/katcha/
+
 vipergui-demo: viper/*.ha cmd/demo/*.ha
 	$(HARE) build $(FLAGS) -o $@ cmd/demo/
 
@@ -90,6 +99,9 @@ desktop: all
 	@mkdir -p $(APPS)
 	@for s in $(SIZES); do \
 		mkdir -p $(ICONS)/$${s}x$${s}/apps; \
+		cp assets/sj/sj-mini-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/sj-mini.png; \
+        cp assets/katcha/katcha-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/katcha.png; \
+        cp assets/wolt/wolt-mini-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/wolt-mini.png; \
 		cp assets/logo/vipergui-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/vipergui.png; \
 		cp assets/crane/flappy-crane-$$s.png $(ICONS)/$${s}x$${s}/apps/flappy-crane.png; \
 		cp assets/bines/bines-icon-$$s.png $(ICONS)/$${s}x$${s}/apps/bines.png; \
@@ -102,7 +114,10 @@ desktop: all
 	done
 	@mkdir -p $(ICONS)/scalable/apps
 	@cp assets/logo/vipergui-icon.svg $(ICONS)/scalable/apps/vipergui.svg
-	$(call entry,vipergui-demo,ViperGui Demo,Widgets and Viper vs. Dumplings,vipergui,Development;)
+	$(call entry,sj-mini,SJ Mini,De nyeste kapitler fra MANGA Plus,sj-mini,Graphics;Viewer;)
+	$(call entry,katcha,KATCHA BOOTYLOADER,Gothic USB format utility,katcha,System;Utility;)
+	$(call entry,wolt-mini,Wolt Mini,Bestil mad fra Wolt,wolt-mini,Network;Utility;)
+		$(call entry,vipergui-demo,ViperGui Demo,Widgets and Viper vs. Dumplings,vipergui,Development;)
 	$(call entry,flappy-crane,Flappy Crane,Fly Crane through the bamboo,flappy-crane,Game;ArcadeGame;)
 	$(call entry,mastodon,Mastodon,Chat with Mastodon (OpenRouter),vipergui,Network;Chat;)
 	$(call entry,bines,Bines,Match Three - Make Magic!,bines,Game;LogicGame;)
