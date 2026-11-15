@@ -1,5 +1,6 @@
-// GOTHECER: Monsters of Yote Wood — a 2D turn-based RPG battle demo.
-// The goth gnome band (Welteum, Slusara and Facia) against MORGHUL,
+// GOTHECER: Monsters of Yote Wood — a 2D turn-based RPG.
+// The goth gnome band (Welteum, Slusara and Facia) fights its way through
+// Yote Wood: first SNAILOR, then DONUTZILLA, and at last the boss MORGHUL,
 // the Ancient Hair Slime. Made with Hare + ViperGui.
 //
 // Mouse or arrow keys + Enter. R plays again. Esc quits.
@@ -24,7 +25,7 @@ def A_GUARD: int = 4;
 def A_FLEE: int = 5;
 
 // Who talks in the message box.
-def WHO_MORGHUL: int = 3;
+def WHO_FOE: int = 3;
 def WHO_NONE: int = 4;
 
 def INK: viper::color = 0xff120a1c;
@@ -75,26 +76,52 @@ type spark = struct {
 	note: bool,            // a music note instead of a dot
 };
 
-type state = enum { TITLE, CHOOSE, ACT, ENEMY, WIN, LOSE };
+// A monster: what it is called, how hard it hits, and its pictures.
+type foe = struct {
+	name: str,             // "SNAILOR" (for titles)
+	short: str,            // "Snailor" (for sentences)
+	title: str,
+	file: str,
+	maxhp: int,
+	boss: bool,
+	rage: bool,            // attacks twice under half HP
+	charge: bool,          // charges up every 4th turn, then a big attack
+	single: str, single_lo: int, single_hi: int,
+	all: str, all_lo: int, all_hi: int,
+	glue: str,             // "" = cannot glue a gnome
+	big: str, big_lo: int, big_hi: int,
+	charge_text: str,
+	intro: str,
+	feet: int,
+	frames: [6]viper::image,
+	hit: [6]viper::image,  // knocked back (only if has_hit)
+	ko: [6]viper::image,   // falls down (only if has_ko)
+	has_hit: bool,
+	has_ko: bool,
+	portrait: viper::image,
+	face: viper::image,
+};
+
+def NFOES: size = 3;
+
+type state = enum { TITLE, CHOOSE, ACT, ENEMY, CLEAR, WIN, LOSE };
 
 type game = struct {
 	st: state,
 	t: f64,
 	rng: random::random,
-    bg: [6]viper::image,
-	map: [6]viper::image,
 	heroes: [3]hero,
 	cur: size,             // whose turn it is
 	sel: int,              // menu choice
 	act: int,              // the chosen action
 	act_t: f64,
 	applied: bool,
-	// Morghul
+	// The monster we fight now
+	foes: [NFOES]foe,
+	stage: size,
 	m_hp: int, m_maxhp: int,
-	m_frames: [6]viper::image,
-	m_portrait: viper::image,
-	m_big: viper::image,
 	m_hurt_t: f64,
+	ko_t: f64,
 	m_turn: int,
 	m_charging: bool,
 	m_move: int,           // the attack it is doing
@@ -111,8 +138,10 @@ type game = struct {
 	sparks: [96]spark,
 	sfx: int,
 	// Pictures
+	bg: [6]viper::image,
 	logo: viper::image,
 	logo_big: viper::image,
+	map: [6]viper::image,
 };
 
 // --- pictures ---
@@ -134,6 +163,79 @@ fn free_hero(h: *hero) void = {
 	for (let k = 0z; k < NFRAMES; k += 1) viper::image_free(&h.frames[k]);
 	viper::image_free(&h.portrait);
 };
+
+fn load_foe(f: *foe) void = {
+	let b: [96]u8 = [0...];
+	for (let k = 0z; k < NFRAMES; k += 1) {
+		f.frames[k] = picture(fmt::bsprintf(b, "assets/gothecer/{}-{}.png", f.file, k)!);
+		if (f.has_hit) {
+			f.hit[k] = picture(fmt::bsprintf(b, "assets/gothecer/{}-hit-{}.png", f.file, k)!);
+		};
+		if (f.has_ko) {
+			f.ko[k] = picture(fmt::bsprintf(b, "assets/gothecer/{}-ko-{}.png", f.file, k)!);
+		};
+	};
+	f.portrait = picture(fmt::bsprintf(b, "assets/gothecer/p-{}.png", f.file)!);
+	f.face = picture(fmt::bsprintf(b, "assets/gothecer/p-{}-big.png", f.file)!);
+};
+
+fn free_foe(f: *foe) void = {
+	for (let k = 0z; k < NFRAMES; k += 1) {
+		viper::image_free(&f.frames[k]);
+		if (f.has_hit) viper::image_free(&f.hit[k]);
+		if (f.has_ko) viper::image_free(&f.ko[k]);
+	};
+	viper::image_free(&f.portrait);
+	viper::image_free(&f.face);
+};
+
+// The three monsters of Yote Wood, in the order the band meets them.
+fn setup_foes(g: *game) void = {
+	g.foes[0] = foe {
+		name = "SNAILOR", short = "Snailor",
+		title = "The Spiky Slime Snail", file = "snail",
+		maxhp = 9000, boss = false, rage = false, charge = false,
+		single = "Skalrul", single_lo = 420, single_hi = 560,
+		all = "Slimspor", all_lo = 180, all_hi = 260,
+		glue = "Klisterslim",
+		big = "", big_lo = 0, big_hi = 0, charge_text = "",
+		intro = "En slimet skygge kryber ud af mosen... SNAILOR spærrer stien!",
+		feet = GROUND + 6,
+		has_hit = false, has_ko = false,
+		...
+	};
+	g.foes[1] = foe {
+		name = "DONUTZILLA", short = "Donutzilla",
+		title = "The Sugar-Glazed Terror", file = "donut",
+		maxhp = 14500, boss = false, rage = true, charge = true,
+		single = "Krymmelbid", single_lo = 520, single_hi = 700,
+		all = "Glasurregn", all_lo = 230, all_hi = 330,
+		glue = "Sukkerglasur",
+		big = "MEGA-DONUT-BRØL", big_lo = 420, big_hi = 560,
+		charge_text = "Donutzilla puster sig op... Næste tur kommer MEGA-DONUT-BRØLET!",
+		intro = "Hvad lugter så sødt?! DONUTZILLA brøler, og glasuren drypper overalt!",
+		feet = GROUND + 4,
+		has_hit = false, has_ko = true,
+		...
+	};
+	g.foes[2] = foe {
+		name = "MORGHUL", short = "Morghul",
+		title = "The Ancient Hair Slime", file = "morghul",
+		maxhp = 24800, boss = true, rage = true, charge = true,
+		single = "Hårpisk", single_lo = 600, single_hi = 820,
+		all = "Slimregn", all_lo = 260, all_hi = 380,
+		glue = "Klister-slim",
+		big = "UUUURRRBRØØØL", big_lo = 520, big_hi = 680,
+		charge_text = "Morghul samler alt sit hår... Næste tur kommer URBRØLET!",
+		intro = "Så er det tid, GOTHECER! Lad os sende det urgamle hårslimmonster tilbage til mørket!",
+		feet = GROUND + 8,
+		has_hit = false, has_ko = false,
+		...
+	};
+	for (let i = 0z; i < NFOES; i += 1) load_foe(&g.foes[i]);
+};
+
+fn cur_foe(g: *game) *foe = &g.foes[g.stage];
 
 // --- small helpers ---
 
@@ -235,31 +337,58 @@ fn new_fight(g: *game) void = {
 		h.stuck = false;
 		h.hurt_t = 0.0;
 	};
-	g.m_hp = 24800;
-	g.m_maxhp = 24800;
+	g.elixirs = ELIXIRS;
+	g.round = 1;
+	g.stage = 0;
+	start_stage(g);
+};
+
+// Puts the next monster on the path.
+fn start_stage(g: *game) void = {
+	const f = cur_foe(g);
+	g.m_hp = f.maxhp;
+	g.m_maxhp = f.maxhp;
+	g.m_hurt_t = 0.0;
+	g.ko_t = 0.0;
 	g.m_turn = 0;
 	g.m_charging = false;
 	g.hymn = 0;
-	g.elixirs = ELIXIRS;
-	g.round = 1;
-	g.cur = 0;
-	g.sel = 0;
+	for (let i = 0z; i < 3; i += 1) {
+		g.heroes[i].guard = false;
+		g.heroes[i].stuck = false;
+	};
 	for (let i = 0z; i < len(g.pops); i += 1) g.pops[i].t = 0.0;
 	for (let i = 0z; i < len(g.sparks); i += 1) g.sparks[i].t = 0.0;
-	say(g, 1, "Så er det tid, GOTHECER! Lad os sende det urgamle hårslimmonster tilbage til mørket!");
-	g.st = state::CHOOSE;
+	next_turn(g, 0);
+	say(g, if (f.boss) 1 else WHO_FOE, "{}", f.intro);
+};
+
+// The band rests between two fights.
+fn rest(g: *game) void = {
+	for (let i = 0z; i < 3; i += 1) {
+		let h = &g.heroes[i];
+		if (!alive(h)) {
+			h.hp = h.maxhp * 30 / 100;
+		} else {
+			h.hp += h.maxhp * 40 / 100;
+			if (h.hp > h.maxhp) h.hp = h.maxhp;
+		};
+		h.mp += h.maxmp * 40 / 100;
+		if (h.mp > h.maxmp) h.mp = h.maxmp;
+	};
+	g.elixirs += 1;
 };
 
 // --- whose turn ---
 
-// Finds the next hero who can act, or lets Morghul have its turn.
+// Finds the next hero who can act, or lets the monster have its turn.
 fn next_turn(g: *game, from: size) void = {
 	for (let i = from; i < 3; i += 1) {
 		let h = &g.heroes[i];
 		if (!alive(h)) continue;
 		if (h.stuck) {
 			h.stuck = false;
-			say(g, WHO_NONE, "{} sidder fast i Morghuls slim og må stå over!", h.name);
+			say(g, WHO_NONE, "{} sidder fast i {} og må stå over!", h.name, cur_foe(g).glue);
 			continue;
 		};
 		h.guard = false;
@@ -272,7 +401,8 @@ fn next_turn(g: *game, from: size) void = {
 };
 
 fn start_enemy(g: *game) void = {
-	g.m_hits_left = if (g.m_hp * 2 <= g.m_maxhp) 2 else 1;
+	const enraged = cur_foe(g).rage && g.m_hp * 2 <= g.m_maxhp;
+	g.m_hits_left = if (enraged) 2 else 1;
 	pick_move(g);
 };
 
@@ -282,7 +412,7 @@ fn choose(g: *game, action: int) void = {
 	const h = &g.heroes[g.cur];
 	switch (action) {
 	case A_FLEE =>
-		say(g, g.cur: int, "Man flygter ikke fra Morghul! Hele Yote Wood regner med os!");
+		say(g, g.cur: int, "Man flygter ikke fra {}! Hele Yote Wood regner med os!", cur_foe(g).short);
 		g.sfx = 9;
 		return;
 	case A_SKILL =>
@@ -325,7 +455,7 @@ fn damage_morghul(g: *game, base: f64, what: str) void = {
 	if (crit) {
 		say(g, g.cur: int, "{}! KRITISK TRÆF for {} skade!", what, n);
 	} else {
-		say(g, g.cur: int, "{} rammer Morghul for {} skade!", what, n);
+		say(g, g.cur: int, "{} rammer {} for {} skade!", what, cur_foe(g).short, n);
 	};
 	g.sfx = if (g.cur == 0) 1 else if (g.cur == 1) 2 else 3;
 };
@@ -391,7 +521,7 @@ fn apply_action(g: *game) void = {
 	};
 };
 
-// --- Morghul acts ---
+// --- the monster acts ---
 
 def M_WHIP: int = 0;
 def M_RAIN: int = 1;
@@ -404,11 +534,15 @@ fn pick_move(g: *game) void = {
 	if (g.m_charging) {
 		g.m_move = M_ROAR;
 		g.m_charging = false;
-	} else if (g.m_turn % 4 == 0) {
+	} else if (cur_foe(g).charge && g.m_turn % 4 == 0) {
 		g.m_move = M_CHARGE;
 	} else {
 		const r = rnd(g, 0, 99);
-		g.m_move = if (r < 50) M_WHIP else if (r < 85) M_RAIN else M_GLUE;
+		if (len(cur_foe(g).glue) > 0) {
+			g.m_move = if (r < 50) M_WHIP else if (r < 85) M_RAIN else M_GLUE;
+		} else {
+			g.m_move = if (r < 60) M_WHIP else M_RAIN;
+		};
 	};
 	g.act_t = 0.0;
 	g.applied = false;
@@ -440,31 +574,34 @@ fn random_target(g: *game) size = {
 };
 
 fn apply_enemy(g: *game) void = {
+	const f = cur_foe(g);
 	switch (g.m_move) {
 	case M_CHARGE =>
-		say(g, WHO_MORGHUL, "Morghul samler alt sit hår... Næste tur kommer URBRØLET!");
+		g.m_charging = true;
+		say(g, WHO_FOE, "{}", f.charge_text);
 		g.sfx = 6;
 	case M_ROAR =>
 		let total = 0;
-		for (let i = 0z; i < 3; i += 1) total += hurt_hero(g, i, 520, 680);
-		say(g, WHO_MORGHUL, "UUUURRRBRØØØL! Hele bandet tager skade ({} i alt)!", total);
+		for (let i = 0z; i < 3; i += 1) total += hurt_hero(g, i, f.big_lo, f.big_hi);
+		say(g, WHO_FOE, "{}! Hele bandet tager skade ({} i alt)!", f.big, total);
 		g.shake = 0.6;
 		g.sfx = 7;
 	case M_RAIN =>
-		for (let i = 0z; i < 3; i += 1) hurt_hero(g, i, 260, 380);
-		say(g, WHO_MORGHUL, "Slimregn! Grøn slim drypper ned over hele bandet!");
+		let sum = 0;
+		for (let i = 0z; i < 3; i += 1) sum += hurt_hero(g, i, f.all_lo, f.all_hi);
+		say(g, WHO_FOE, "{}! Hele bandet bliver ramt ({} skade i alt)!", f.all, sum);
 		g.shake = 0.25;
 		g.sfx = 6;
 	case M_GLUE =>
 		const t = random_target(g);
-		const d = hurt_hero(g, t, 260, 340);
+		const d = hurt_hero(g, t, f.all_lo, f.all_hi);
 		g.heroes[t].stuck = true;
-		say(g, WHO_MORGHUL, "Klister-slim! {} tager {} skade og sidder fast!", g.heroes[t].name, d);
+		say(g, WHO_FOE, "{}! {} tager {} skade og sidder fast!", f.glue, g.heroes[t].name, d);
 		g.sfx = 6;
 	case =>
 		const v = random_target(g);
-		const dmg = hurt_hero(g, v, 600, 820);
-		say(g, WHO_MORGHUL, "Hårpisk! Morghul slår {} for {} skade!", g.heroes[v].name, dmg);
+		const dmg = hurt_hero(g, v, f.single_lo, f.single_hi);
+		say(g, WHO_FOE, "{}! {} rammer {} for {} skade!", f.single, f.short, g.heroes[v].name, dmg);
 		g.shake = 0.3;
 		g.sfx = 5;
 	};
@@ -482,6 +619,7 @@ fn update(win: *viper::window, g: *game, dt: f64) bool = {
 	g.t += dt;
 	if (g.shake > 0.0) g.shake -= dt;
 	if (g.m_hurt_t > 0.0) g.m_hurt_t -= dt;
+	if (g.m_hp <= 0) g.ko_t += dt;
 	for (let i = 0z; i < 3; i += 1) {
 		if (g.heroes[i].hurt_t > 0.0) g.heroes[i].hurt_t -= dt;
 	};
@@ -532,7 +670,11 @@ fn update(win: *viper::window, g: *game, dt: f64) bool = {
 			apply_action(g);
 		};
 		if (g.act_t >= 0.95) {
-			if (g.m_hp <= 0) {
+			if (g.m_hp <= 0 && g.stage + 1 < NFOES) {
+				g.st = state::CLEAR;
+				say(g, 1, "{} er besejret! Videre ind i Yote Wood...", cur_foe(g).name);
+				g.sfx = 8;
+			} else if (g.m_hp <= 0) {
 				g.st = state::WIN;
 				say(g, 1, "Vi klarede det! Morghul smelter væk, og Yote Wood er reddet!");
 				g.sfx = 8;
@@ -549,17 +691,24 @@ fn update(win: *viper::window, g: *game, dt: f64) bool = {
 		if (g.act_t >= 1.3) {
 			if (all_dead(g)) {
 				g.st = state::LOSE;
-				say(g, WHO_MORGHUL, "Morghul slugte hele bandet... Tryk R for at prøve igen.");
+				say(g, WHO_FOE, "{} slugte hele bandet... Tryk R for at prøve igen.", cur_foe(g).short);
 				g.sfx = 11;
 			} else {
 				g.m_hits_left -= 1;
 				if (g.m_hits_left > 0 && g.m_move != M_CHARGE) {
-					say(g, WHO_MORGHUL, "Morghul er RASENDE og angriber igen!");
+					say(g, WHO_FOE, "{} er RASENDE og angriber igen!", cur_foe(g).short);
 					pick_move(g);
 				} else {
 					end_round(g);
 				};
 			};
+		};
+	case state::CLEAR =>
+		if (g.ko_t > 0.8 && (go || clicked(win))) {
+			g.stage += 1;
+			rest(g);
+			start_stage(g);
+			g.sfx = 1;
 		};
 	case state::WIN, state::LOSE =>
 		if (viper::key_pressed(win, viper::key::R)) {
@@ -611,22 +760,34 @@ fn draw_sprite(win: *viper::window, im: *viper::image, cx: int, feet: int) void 
 
 // Which frame of the moving background and map to show.
 fn anim(g: *game) size = ((g.t / 0.16): int % 6): size;
- 
+
 fn shake_x(g: *game) int = if (g.shake > 0.0) rnd(g, -6, 6) else 0;
 
 fn draw_scene(win: *viper::window, g: *game) void = {
 	const sx = shake_x(g);
 	viper::draw_image(win, &g.bg[anim(g)], sx, 0);
 
-	// Morghul: wobbles all the time, lunges when it attacks.
+	// The monster: moves all the time, lunges when it attacks,
+	// is knocked back when hit and falls when beaten.
+	const mon = cur_foe(g);
 	let mx = 880 + sx;
 	if (g.st == state::ENEMY) {
 		mx -= (math::sinf64(math::PI * g.act_t / 1.3) * 120.0): int;
 	};
-	if (g.m_hurt_t > 0.0) mx += rnd(g, -8, 8);
-	if (g.m_hp > 0 || g.st != state::WIN) {
+	if (g.m_hp <= 0) {
+		if (mon.has_ko) {
+			let k = (g.ko_t / 0.14): size;
+			if (k > NFRAMES - 1) k = NFRAMES - 1;
+			draw_sprite(win, &mon.ko[k], mx, mon.feet);
+		};
+	} else if (g.m_hurt_t > 0.0 && mon.has_hit) {
+		let k = ((0.4 - g.m_hurt_t) / 0.4 * 6.0): size;
+		if (k > NFRAMES - 1) k = NFRAMES - 1;
+		draw_sprite(win, &mon.hit[k], mx + 20, mon.feet);
+	} else {
+		if (g.m_hurt_t > 0.0) mx += rnd(g, -8, 8);
 		const mf = ((g.t / 0.18): int % NFRAMES: int): size;
-		draw_sprite(win, &g.m_frames[mf], mx, GROUND + 8);
+		draw_sprite(win, &mon.frames[mf], mx, mon.feet);
 	};
 
 	// The band.
@@ -695,20 +856,25 @@ fn draw_scene(win: *viper::window, g: *game) void = {
 };
 
 fn draw_boss(win: *viper::window, g: *game) void = {
+	const f = cur_foe(g);
 	panel(win, 700, 10, 390, 78, EDGE);
-	viper::draw_image(win, &g.m_portrait, 1024, 16);
-	viper::text_scaled(win, 714, 16, "BOSS", RED, 1);
-	viper::text_scaled(win, 714, 32, "MORGHUL", TEXT, 2);
-	viper::text(win, 714, 66, "The Ancient Hair Slime", DIM);
+	viper::draw_image(win, &f.portrait, 1024, 16);
+	if (f.boss) {
+		viper::text_scaled(win, 714, 16, "BOSS", RED, 1);
+	} else {
+		viper::text_scaled(win, 714, 16, "MONSTER", GOLD, 1);
+	};
+	viper::text_scaled(win, 714, 32, f.name, TEXT, 2);
+	viper::text(win, 714, 66, f.title, DIM);
 	let b: [32]u8 = [0...];
 	const hp = fmt::bsprintf(b, "HP {} / {}", g.m_hp, g.m_maxhp)!;
 	viper::text(win, 1012 - viper::text_width(hp, 1), 34, hp, TEXT);
 	viper::round_rect(win, 880, 54, 134, 10, 5, 0xff2a1a3a);
 	if (g.m_hp > 0) viper::round_rect(win, 880, 54, 134 * g.m_hp / g.m_maxhp, 10, 5, RED);
-	if (g.m_hp * 2 <= g.m_maxhp && g.m_hp > 0) {
-		viper::text(win, 770, 16, "RASENDE!", RED);
+	if (f.rage && g.m_hp * 2 <= g.m_maxhp && g.m_hp > 0) {
+		viper::text(win, 790, 16, "RASENDE!", RED);
 	};
-	if (g.m_charging) viper::text(win, 850, 16, "samler kræfter!", GOLD);
+	if (g.m_charging) viper::text(win, 870, 16, "samler kræfter!", GOLD);
 };
 
 fn draw_menu(win: *viper::window, g: *game) void = {
@@ -761,7 +927,7 @@ fn draw_cards(win: *viper::window, g: *game) void = {
 fn hint(g: *game) str = {
 	const h = &g.heroes[g.cur];
 	return switch (g.sel) {
-	case A_ATTACK => yield "Et almindeligt angreb mod Morghul.";
+	case A_ATTACK => yield "Et almindeligt angreb med dit våben.";
 	case A_SKILL => yield h.skill_text;
 	case A_MAGIC => yield "Måneheling (70 MP): heler den, der har mindst HP tilbage.";
 	case A_ITEM => yield "Svampe-eliksir: +1500 HP og +80 MP - og kan vække en KO'et nisse.";
@@ -782,9 +948,10 @@ fn draw_message(win: *viper::window, g: *game) void = {
 		const h = &g.heroes[who: size];
 		viper::draw_image(win, &h.portrait, px, py);
 		name = h.name;
-	case WHO_MORGHUL =>
-		viper::draw_image(win, &g.m_big, px, py);
-		name = "MORGHUL";
+	case WHO_FOE =>
+		const f = cur_foe(g);
+		viper::draw_image(win, &f.face, px, py);
+		name = f.name;
 	case => void;
 	};
 	const tx = if (who == WHO_NONE) 230 else 316;
@@ -804,8 +971,24 @@ fn draw_side(win: *viper::window, g: *game) void = {
 	panel(win, 12, 482, 192, 172, EDGE);
 	viper::draw_image(win, &g.map[anim(g)], 24, 485);
 	let b: [32]u8 = [0...];
-	viper::text(win, 24, 660, fmt::bsprintf(b, "Runde {}", g.round)!, DIM);
+	viper::text(win, 24, 660, fmt::bsprintf(b, "Kamp {}/{}   Runde {}",
+		g.stage + 1, NFOES, g.round)!, DIM);
 	viper::text(win, 24, 678, "Hare + ViperGui", PURPLE);
+};
+
+fn draw_clear(win: *viper::window, g: *game) void = {
+	const next = &g.foes[g.stage + 1];
+	panel(win, 300, 150, 500, 190, GOLD);
+	outlined(win, 550 - viper::text_width("SEJR!", 5) / 2, 168, "SEJR!", GOLD, 5);
+	let b: [96]u8 = [0...];
+	let s = fmt::bsprintf(b, "{} er besejret!", cur_foe(g).name)!;
+	viper::text(win, 550 - viper::text_width(s, 1) / 2, 246, s, TEXT);
+	s = "Bandet hviler: +40% HP og MP, KO'ede vågner, +1 eliksir";
+	viper::text(win, 550 - viper::text_width(s, 1) / 2, 270, s, LILAC);
+	if (g.ko_t > 0.8) {
+		s = fmt::bsprintf(b, "Næste: {}  -  tryk Enter", next.name)!;
+		viper::text(win, 550 - viper::text_width(s, 1) / 2, 304, s, GOLD);
+	};
 };
 
 fn draw_end(win: *viper::window, g: *game) void = {
@@ -817,8 +1000,9 @@ fn draw_end(win: *viper::window, g: *game) void = {
 			270, "Yote Wood er reddet. GOTHECER spiller videre!", TEXT);
 	} else {
 		outlined(win, 550 - viper::text_width("GAME OVER", 4) / 2, 196, "GAME OVER", RED, 4);
-		viper::text(win, 550 - viper::text_width("Morghul slugte hele bandet...", 1) / 2,
-			270, "Morghul slugte hele bandet...", TEXT);
+		let lb: [64]u8 = [0...];
+		const ls = fmt::bsprintf(lb, "{} slugte hele bandet...", cur_foe(g).short)!;
+		viper::text(win, 550 - viper::text_width(ls, 1) / 2, 270, ls, TEXT);
 	};
 	let b: [48]u8 = [0...];
 	const s = fmt::bsprintf(b, "{} runder  -  tryk R for ny kamp", g.round)!;
@@ -828,14 +1012,15 @@ fn draw_end(win: *viper::window, g: *game) void = {
 fn draw_title(win: *viper::window, g: *game) void = {
 	viper::draw_image(win, &g.bg[anim(g)], 0, 0);
 	viper::rect(win, 0, 472, W, H - 472, INK);
-	draw_sprite(win, &g.m_frames[((g.t / 0.18): int % 6): size], 880, GROUND + 8);
+	const boss = &g.foes[NFOES - 1];
+	draw_sprite(win, &boss.frames[((g.t / 0.18): int % 6): size], 880, boss.feet);
 	for (let i = 0z; i < 3; i += 1) {
 		const h = &g.heroes[i];
 		draw_sprite(win, &h.frames[0], 260 + i: int * 160, GROUND);
 	};
 	viper::draw_image(win, &g.logo_big, (W - g.logo_big.w) / 2, 30);
 	if ((g.t * 2.0): int % 2 == 0) {
-		const s = "Tryk Enter for at kæmpe mod MORGHUL";
+		const s = "Tryk Enter for at drage ind i Yote Wood";
 		outlined(win, (W - viper::text_width(s, 2)) / 2, 560, s, GOLD, 2);
 	};
 	const s2 = "Piletaster/mus + Enter vælger  -  Esc afslutter";
@@ -855,6 +1040,7 @@ fn draw(win: *viper::window, g: *game) void = {
 	draw_cards(win, g);
 	draw_side(win, g);
 	draw_message(win, g);
+	if (g.st == state::CLEAR) draw_clear(win, g);
 	if (g.st == state::WIN || g.st == state::LOSE) draw_end(win, g);
 };
 
@@ -872,13 +1058,11 @@ export fn main() void = {
 	let g = game { rng = random::init(viper::ticks(): u64 + 77), ... };
 	g.logo = picture("assets/gothecer/logo.png");
 	g.logo_big = picture("assets/gothecer/logo-big.png");
-	g.m_portrait = picture("assets/gothecer/p-morghul.png");
-	g.m_big = picture("assets/gothecer/p-morghul-big.png");
+	setup_foes(&g);
 	let b: [64]u8 = [0...];
 	for (let k = 0z; k < NFRAMES; k += 1) {
 		g.bg[k] = picture(fmt::bsprintf(b, "assets/gothecer/bg-{}.png", k)!);
 		g.map[k] = picture(fmt::bsprintf(b, "assets/gothecer/map-{}.png", k)!);
-		g.m_frames[k] = picture(fmt::bsprintf(b, "assets/gothecer/morghul-{}.png", k)!);
 	};
 	const files: [3]str = ["welteum", "slusara", "facia"];
 	const xs: [3]int = [330, 480, 625];
@@ -958,12 +1142,10 @@ export fn main() void = {
 
 	for (let i = 0z; i < 3; i += 1) free_hero(&g.heroes[i]);
 	for (let k = 0z; k < NFRAMES; k += 1) {
-		viper::image_free(&g.m_frames[k]);
 		viper::image_free(&g.bg[k]);
 		viper::image_free(&g.map[k]);
 	};
 	viper::image_free(&g.logo);
 	viper::image_free(&g.logo_big);
-	viper::image_free(&g.m_portrait);
-	viper::image_free(&g.m_big);
+	for (let i = 0z; i < NFOES; i += 1) free_foe(&g.foes[i]);
 };
