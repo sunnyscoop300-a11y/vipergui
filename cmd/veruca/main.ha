@@ -96,6 +96,15 @@ fn expand(p: str) str = {
 	return strings::dup(p)!;
 };
 
+// Puts s into a textinput (cut at the buffer size, never mid-character).
+fn set_text(t: *viper::textinput, s: str) void = {
+	const b = strings::toutf8(s);
+	let n = if (len(b) > len(t.buf)) len(t.buf) else len(b);
+	for (n > 0 && n < len(b) && (b[n] & 0xc0) == 0x80) n -= 1;
+	for (let i = 0z; i < n; i += 1) t.buf[i] = b[i];
+	t.length = n;
+};
+
 fn read_all(path: str) ([]u8 | void) = {
 	const f = match (os::open(path)) {
 	case let f: io::file => yield f;
@@ -491,6 +500,25 @@ export fn main() void = {
 		a.preview_ok = true;
 	case viper::imgerror => void;
 	};
+
+	// kommandolinje: veruca-v2 [--fil prompt.txt] [--format 2:3] [--tryl]
+	let tryl = false;
+	for (let i = 1z; i < len(os::args); i += 1) {
+		const arg = os::args[i];
+		if (arg == "--tryl") {
+			tryl = true;
+		} else if (arg == "--fil" && i + 1 < len(os::args)) {
+			i += 1;
+			set_text(&a.file, os::args[i]);
+			load_prompt(&a);
+		} else if (arg == "--format" && i + 1 < len(os::args)) {
+			i += 1;
+			for (let r = 0z; r < len(RATIOS); r += 1) {
+				if (RATIOS[r] == os::args[i]) a.ratio = r;
+			};
+		};
+	};
+	if (tryl) start(&a);
 
 	for (viper::frame(win)) {
 		if (viper::key_pressed(win, viper::key::ESCAPE)) break;
